@@ -1,39 +1,41 @@
-# S-Fleet Fantasy War ⚔️ — Update 2
+# S-Fleet Fantasy War ⚔️ — Update 3
 
-Update 2 adaugă sistemul de loot și echipamente.
+Update 3 adaugă **World Map / Dungeon System**.
 
 ## Ce este nou
 
-- tab nou **Inventory**
-- item drops după lupte câștigate
-- rarități: Common, Rare, Epic, Legendary
-- sloturi de echipament: Weapon, Armor, Ring, Amulet
-- butoane Equip / Unequip / Sell
-- bonusuri pe iteme: HP, Attack, Defense, Mana
-- Power calculat și din echipamente
-- quest nou: Loot Collector
-- compatibilitate cu salvările existente
+- tab nou **World**
+- zone diferite:
+  - Goblin Forest
+  - Dark Wolves Valley
+  - Skeleton Crypt
+  - Infernal Gate
+- fiecare zonă are:
+  - level minim
+  - cost de energie
+  - monștri proprii
+  - boss propriu
+  - drop chance diferit
+  - rarity boost pentru iteme
+- boss fight pentru fiecare zonă
+- progres salvat pentru boss defeated și clears pe zonă
+- questuri noi:
+  - Dungeon Runner
+  - Boss Slayer
+- compatibil cu salvările existente
 
-## Important pentru Supabase
+## Important Supabase
 
-Nu trebuie să schimbi tabela Supabase.
-
-Inventarul și echipamentele sunt salvate în același câmp JSONB:
-
-```txt
-game_saves.data
-```
-
-Dacă ai deja jocul live și progresul se salvează, trebuie doar să faci update la fișierele din GitHub.
+Nu trebuie să schimbi tabela Supabase. Salvarea este în câmpul JSONB `data`, deci World Map, Dungeon, boss kills și clears se adaugă automat în salvarea existentă.
 
 ## Cum faci update pe GitHub
 
-1. Descarcă ZIP-ul.
+1. Descarcă ZIP-ul Update 3.
 2. Dezarhivează-l.
-3. Intră în repository-ul GitHub al jocului.
-4. Încarcă / înlocuiește fișierele din pachet.
+3. Intră în repository-ul tău GitHub `s-fleet-fantasy-war`.
+4. Înlocuiește fișierele vechi cu cele noi.
 5. Apasă **Commit changes**.
-6. Netlify va porni deploy automat.
+6. Netlify pornește automat deploy.
 
 ## Dacă Netlify nu pornește automat
 

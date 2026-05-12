@@ -6,7 +6,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const hasSupabase = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v3";
+const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v4";
 
 const CLASSES = {
   Knight: {
@@ -66,6 +66,74 @@ const ENEMIES = [
   { name: "Infernal Brute", emoji: "🔥", hp: 195, attack: 28, defense: 10, reward: { gold: 210, wood: 70, crystals: 18, xp: 105 } }
 ];
 
+
+const WORLD_ZONES = [
+  {
+    id: "goblin_forest",
+    name: "Goblin Forest",
+    emoji: "🌲",
+    level: 1,
+    energyCost: 1,
+    dropChance: 0.70,
+    rarityBoost: 0,
+    rewardMultiplier: 1,
+    description: "Pădure de început, bună pentru gold, XP și primele iteme.",
+    enemies: [
+      { name: "Goblin Scout", emoji: "🧌", hp: 90, attack: 13, defense: 3, reward: { gold: 68, wood: 28, crystals: 5, xp: 34 } },
+      { name: "Forest Thief", emoji: "🗡️", hp: 105, attack: 15, defense: 4, reward: { gold: 82, wood: 32, crystals: 6, xp: 42 } }
+    ],
+    boss: { name: "Goblin King", emoji: "👑", hp: 185, attack: 24, defense: 9, reward: { gold: 260, wood: 105, crystals: 22, xp: 130 } }
+  },
+  {
+    id: "wolf_valley",
+    name: "Dark Wolves Valley",
+    emoji: "🐺",
+    level: 3,
+    energyCost: 2,
+    dropChance: 0.76,
+    rarityBoost: 1,
+    rewardMultiplier: 1.25,
+    description: "Vale periculoasă cu lupi rapizi și drop-uri Rare mai dese.",
+    enemies: [
+      { name: "Dark Wolf", emoji: "🐺", hp: 135, attack: 20, defense: 5, reward: { gold: 112, wood: 42, crystals: 9, xp: 62 } },
+      { name: "Alpha Stalker", emoji: "🌘", hp: 160, attack: 23, defense: 7, reward: { gold: 132, wood: 48, crystals: 11, xp: 75 } }
+    ],
+    boss: { name: "Fenrir Shade", emoji: "🐺", hp: 285, attack: 34, defense: 13, reward: { gold: 430, wood: 150, crystals: 42, xp: 220 } }
+  },
+  {
+    id: "skeleton_crypt",
+    name: "Skeleton Crypt",
+    emoji: "💀",
+    level: 5,
+    energyCost: 2,
+    dropChance: 0.82,
+    rarityBoost: 2,
+    rewardMultiplier: 1.55,
+    description: "Criptă întunecată pentru jucători cu echipament mai bun. Epic poate pica mai des.",
+    enemies: [
+      { name: "Bone Soldier", emoji: "💀", hp: 175, attack: 27, defense: 10, reward: { gold: 165, wood: 55, crystals: 16, xp: 95 } },
+      { name: "Crypt Necromancer", emoji: "🪄", hp: 155, attack: 32, defense: 8, reward: { gold: 185, wood: 62, crystals: 18, xp: 110 } }
+    ],
+    boss: { name: "Lich Commander", emoji: "☠️", hp: 380, attack: 45, defense: 18, reward: { gold: 720, wood: 220, crystals: 75, xp: 360 } }
+  },
+  {
+    id: "infernal_gate",
+    name: "Infernal Gate",
+    emoji: "🔥",
+    level: 8,
+    energyCost: 3,
+    dropChance: 0.90,
+    rarityBoost: 3,
+    rewardMultiplier: 2.0,
+    description: "Zona grea pentru Legendary drops, boss puternic și reward mare.",
+    enemies: [
+      { name: "Infernal Brute", emoji: "🔥", hp: 240, attack: 40, defense: 15, reward: { gold: 250, wood: 80, crystals: 30, xp: 150 } },
+      { name: "Demon Guard", emoji: "😈", hp: 290, attack: 46, defense: 19, reward: { gold: 310, wood: 95, crystals: 36, xp: 185 } }
+    ],
+    boss: { name: "Astaroth Flame Lord", emoji: "👹", hp: 620, attack: 68, defense: 28, reward: { gold: 1250, wood: 320, crystals: 145, xp: 720 } }
+  }
+];
+
 const SLOTS = {
   weapon: { label: "Weapon", emoji: "⚔️" },
   armor: { label: "Armor", emoji: "🛡️" },
@@ -110,6 +178,20 @@ const QUESTS = [
     check: (game) => totalItemCount(game) >= 3
   },
   {
+    id: "dungeon_runner",
+    title: "Dungeon Runner",
+    text: "Câștigă 3 lupte în World Map / Dungeon.",
+    reward: { gold: 300, wood: 120, crystals: 35, xp: 130 },
+    check: (game) => (game.stats.dungeonWins || 0) >= 3
+  },
+  {
+    id: "boss_slayer",
+    title: "Boss Slayer",
+    text: "Învinge primul boss de zonă.",
+    reward: { gold: 500, wood: 180, crystals: 60, xp: 220 },
+    check: (game) => (game.stats.bossKills || 0) >= 1
+  },
+  {
     id: "veteran",
     title: "Arena Veteran",
     text: "Câștigă 5 lupte.",
@@ -120,7 +202,7 @@ const QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 3,
+    version: 4,
     playerName,
     className,
     level: 1,
@@ -135,8 +217,9 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
     },
     inventory: [],
     equipment: { weapon: null, armor: null, ring: null, amulet: null },
-    stats: { wins: 0, losses: 0, itemsFound: 0 },
+    stats: { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0 },
     completedQuests: [],
+    world: { selectedZoneId: "goblin_forest", completedBosses: [], clears: {} },
     createdAt: new Date().toISOString()
   };
 }
@@ -148,7 +231,7 @@ function clone(value) {
 function normalizeGame(game) {
   if (!game) return null;
   const next = clone(game);
-  next.version = 3;
+  next.version = 4;
   next.resources = { gold: 0, wood: 0, crystals: 0, energy: 0, ...(next.resources || {}) };
   next.buildings = {
     citadel: { level: 1 },
@@ -159,8 +242,11 @@ function normalizeGame(game) {
   };
   next.inventory = Array.isArray(next.inventory) ? next.inventory : [];
   next.equipment = { weapon: null, armor: null, ring: null, amulet: null, ...(next.equipment || {}) };
-  next.stats = { wins: 0, losses: 0, itemsFound: 0, ...(next.stats || {}) };
+  next.stats = { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, ...(next.stats || {}) };
   next.completedQuests = Array.isArray(next.completedQuests) ? next.completedQuests : [];
+  next.world = { selectedZoneId: "goblin_forest", completedBosses: [], clears: {}, ...(next.world || {}) };
+  next.world.completedBosses = Array.isArray(next.world.completedBosses) ? next.world.completedBosses : [];
+  next.world.clears = next.world.clears || {};
   return next;
 }
 
@@ -172,19 +258,25 @@ function pick(array) {
   return array[Math.floor(Math.random() * array.length)];
 }
 
-function rarityRoll() {
-  const total = Object.values(RARITIES).reduce((sum, r) => sum + r.weight, 0);
+function rarityRoll(rarityBoost = 0) {
+  const weights = {
+    Common: Math.max(10, RARITIES.Common.weight - rarityBoost * 13),
+    Rare: RARITIES.Rare.weight + rarityBoost * 7,
+    Epic: RARITIES.Epic.weight + rarityBoost * 4,
+    Legendary: RARITIES.Legendary.weight + rarityBoost * 2
+  };
+  const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
   let roll = Math.random() * total;
-  for (const [name, data] of Object.entries(RARITIES)) {
-    roll -= data.weight;
+  for (const [name, weight] of Object.entries(weights)) {
+    roll -= weight;
     if (roll <= 0) return name;
   }
   return "Common";
 }
 
-function createItem(level = 1, source = "Monster") {
+function createItem(level = 1, source = "Monster", rarityBoost = 0) {
   const slot = pick(Object.keys(SLOTS));
-  const rarity = rarityRoll();
+  const rarity = rarityRoll(rarityBoost);
   const rarityData = RARITIES[rarity];
   const name = `${rarity} ${pick(ITEM_NAMES[slot])}`;
   const base = Math.max(1, level);
@@ -294,19 +386,50 @@ function canAfford(resources, cost) {
   return resources.gold >= cost.gold && resources.wood >= cost.wood && resources.crystals >= cost.crystals;
 }
 
+function scaleEnemy(enemy, level, extraScale = 1) {
+  const next = clone(enemy);
+  const scale = (1 + Math.max(0, level - 1) * 0.12) * extraScale;
+  next.maxHp = Math.round(next.hp * scale);
+  next.hp = next.maxHp;
+  next.attack = Math.round(next.attack * scale);
+  next.defense = Math.round(next.defense * scale);
+  next.reward = {
+    gold: Math.round(next.reward.gold * scale),
+    wood: Math.round(next.reward.wood * scale),
+    crystals: Math.round(next.reward.crystals * scale),
+    xp: Math.round(next.reward.xp * scale)
+  };
+  return next;
+}
+
 function randomEnemy(level) {
   const maxIndex = Math.min(ENEMIES.length - 1, Math.floor((level - 1) / 2));
-  const enemy = clone(ENEMIES[Math.floor(Math.random() * (maxIndex + 1))]);
-  const scale = 1 + Math.max(0, level - 1) * 0.12;
-  enemy.maxHp = Math.round(enemy.hp * scale);
-  enemy.hp = enemy.maxHp;
-  enemy.attack = Math.round(enemy.attack * scale);
-  enemy.defense = Math.round(enemy.defense * scale);
+  return scaleEnemy(ENEMIES[Math.floor(Math.random() * (maxIndex + 1))], level, 1);
+}
+
+function getZone(zoneId) {
+  return WORLD_ZONES.find((zone) => zone.id === zoneId) || WORLD_ZONES[0];
+}
+
+function isZoneUnlocked(game, zone) {
+  return game.level >= zone.level;
+}
+
+function createWorldEnemy(zone, level, isBoss = false) {
+  const source = isBoss ? zone.boss : pick(zone.enemies);
+  const enemy = scaleEnemy(source, Math.max(level, zone.level), isBoss ? 1.25 : 1);
+  const multiplier = zone.rewardMultiplier * (isBoss ? 1.6 : 1);
+  enemy.zoneId = zone.id;
+  enemy.zoneName = zone.name;
+  enemy.isBoss = isBoss;
+  enemy.energyCost = zone.energyCost;
+  enemy.dropChance = Math.min(0.98, zone.dropChance + (isBoss ? 0.08 : 0));
+  enemy.rarityBoost = zone.rarityBoost + (isBoss ? 1 : 0);
   enemy.reward = {
-    gold: Math.round(enemy.reward.gold * scale),
-    wood: Math.round(enemy.reward.wood * scale),
-    crystals: Math.round(enemy.reward.crystals * scale),
-    xp: Math.round(enemy.reward.xp * scale)
+    gold: Math.round(enemy.reward.gold * multiplier),
+    wood: Math.round(enemy.reward.wood * multiplier),
+    crystals: Math.round(enemy.reward.crystals * multiplier),
+    xp: Math.round(enemy.reward.xp * multiplier)
   };
   return enemy;
 }
@@ -427,7 +550,7 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 2 · Inventory</div>
+        <div className="badge">Update 3 · World Map</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{game.playerName} · Level {game.level} · {game.className}</p>
       </div>
@@ -668,6 +791,238 @@ function Battle({ game, setGame }) {
       <div className="panel">
         <h2>Jurnal luptă</h2>
         <div className="battle-log">
+          {log.map((item, idx) => <div key={`${item}-${idx}`}>{item}</div>)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+function Dungeon({ game, setGame }) {
+  const [selectedZoneId, setSelectedZoneId] = useState(game.world?.selectedZoneId || "goblin_forest");
+  const selectedZone = getZone(selectedZoneId);
+  const heroStats = useMemo(() => getHeroStats(game), [game]);
+  const [enemy, setEnemy] = useState(() => createWorldEnemy(selectedZone, game.level, false));
+  const [heroHp, setHeroHp] = useState(heroStats.hp);
+  const [mana, setMana] = useState(heroStats.mana);
+  const [log, setLog] = useState([`Ai intrat în ${selectedZone.name}.`]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setHeroHp(heroStats.hp);
+    setMana(heroStats.mana);
+  }, [heroStats.hp, heroStats.mana]);
+
+  useEffect(() => {
+    const zone = getZone(selectedZoneId);
+    setEnemy(createWorldEnemy(zone, game.level, false));
+    setHeroHp(heroStats.hp);
+    setMana(heroStats.mana);
+    setLog([`Ai selectat zona ${zone.name}.`]);
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.world.selectedZoneId = selectedZoneId;
+      return next;
+    });
+  }, [selectedZoneId]);
+
+  function addLog(text) {
+    setLog((prev) => [text, ...prev].slice(0, 9));
+  }
+
+  function startFight(isBoss = false) {
+    const zone = getZone(selectedZoneId);
+    if (!isZoneUnlocked(game, zone)) {
+      addLog(`Zona se deblochează la level ${zone.level}.`);
+      return;
+    }
+    if (game.resources.energy < zone.energyCost) {
+      addLog(`Ai nevoie de ${zone.energyCost} energie pentru ${zone.name}.`);
+      return;
+    }
+    setEnemy(createWorldEnemy(zone, game.level, isBoss));
+    setHeroHp(heroStats.hp);
+    setMana(heroStats.mana);
+    setBusy(false);
+    setLog([isBoss ? `Boss fight: ${zone.boss.name}!` : `Luptă nouă în ${zone.name}.`]);
+  }
+
+  function finishWin(defeatedEnemy) {
+    let dropped = null;
+    const zone = getZone(defeatedEnemy.zoneId || selectedZoneId);
+
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      next.stats.wins += 1;
+      next.stats.dungeonWins += 1;
+      next.resources.energy = Math.max(0, next.resources.energy - defeatedEnemy.energyCost);
+      next.world.clears[zone.id] = (next.world.clears[zone.id] || 0) + 1;
+
+      if (defeatedEnemy.isBoss && !next.world.completedBosses.includes(zone.id)) {
+        next.world.completedBosses.push(zone.id);
+        next.stats.bossKills += 1;
+        next.resources.crystals += 25 * zone.rarityBoost + 15;
+      } else if (defeatedEnemy.isBoss) {
+        next.stats.bossKills += 1;
+      }
+
+      next = applyReward(next, defeatedEnemy.reward);
+
+      if (Math.random() < defeatedEnemy.dropChance) {
+        dropped = createItem(Math.max(next.level, zone.level), defeatedEnemy.name, defeatedEnemy.rarityBoost);
+        if (next.inventory.length < 60) {
+          next.inventory.push(dropped);
+          next.stats.itemsFound += 1;
+        } else {
+          next.resources.gold += dropped.value;
+          dropped = { ...dropped, soldBecauseFull: true };
+        }
+      }
+
+      return next;
+    });
+
+    addLog(`Victorie în ${zone.name}! Reward: ${defeatedEnemy.reward.gold} gold, ${defeatedEnemy.reward.xp} XP.`);
+    if (defeatedEnemy.isBoss) addLog(`Boss învins: ${defeatedEnemy.name}. Zona este marcată ca progres.`);
+    if (dropped?.soldBecauseFull) addLog(`Inventarul era plin. ${dropped.name} a fost convertit în ${dropped.value} gold.`);
+    else if (dropped) addLog(`Dungeon drop: ${SLOTS[dropped.slot].emoji} ${dropped.name} (${dropped.rarity}).`);
+    setBusy(false);
+  }
+
+  function finishLoss() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.stats.losses += 1;
+      next.resources.energy = Math.max(0, next.resources.energy - enemy.energyCost);
+      return next;
+    });
+    addLog("Ai fost învins în dungeon. Energia a fost consumată.");
+    setBusy(false);
+  }
+
+  function enemyTurn(currentHeroHp, currentEnemy) {
+    const dmg = Math.max(4, Math.round(currentEnemy.attack - heroStats.defense * 0.55 + Math.random() * 10));
+    const after = Math.max(0, currentHeroHp - dmg);
+    setHeroHp(after);
+    addLog(`${currentEnemy.name} lovește pentru ${dmg} damage.`);
+    if (after <= 0) finishLoss();
+    else setBusy(false);
+  }
+
+  function attack(type) {
+    if (busy) return;
+    const zone = getZone(selectedZoneId);
+    if (!isZoneUnlocked(game, zone)) {
+      addLog(`Zona se deblochează la level ${zone.level}.`);
+      return;
+    }
+    if (game.resources.energy < enemy.energyCost) {
+      addLog(`Ai nevoie de ${enemy.energyCost} energie pentru această luptă.`);
+      return;
+    }
+
+    const classData = CLASSES[game.className];
+    let nextMana = mana;
+    let damage;
+
+    if (type === "skill") {
+      if (mana < classData.skill.cost) {
+        addLog("Mana insuficientă pentru skill.");
+        return;
+      }
+      nextMana -= classData.skill.cost;
+      damage = Math.max(10, Math.round(heroStats.attack * classData.skill.power - enemy.defense + Math.random() * 14));
+      addLog(`${classData.skill.name}: ${damage} damage.`);
+    } else {
+      damage = Math.max(6, Math.round(heroStats.attack - enemy.defense * 0.6 + Math.random() * 11));
+      addLog(`Atac normal: ${damage} damage.`);
+    }
+
+    setBusy(true);
+    setMana(nextMana);
+
+    const enemyAfter = { ...enemy, hp: Math.max(0, enemy.hp - damage) };
+    setEnemy(enemyAfter);
+
+    if (enemyAfter.hp <= 0) {
+      finishWin(enemy);
+      return;
+    }
+
+    window.setTimeout(() => enemyTurn(heroHp, enemyAfter), 350);
+  }
+
+  return (
+    <section className="grid dungeon-layout">
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>World Map / Dungeon</h2>
+            <p>Alege zona, luptă cu monștri specifici și învinge boss-ul pentru progres.</p>
+          </div>
+          <div className="power-summary">⚡ Cost zonă: {selectedZone.energyCost}</div>
+        </div>
+
+        <div className="zone-grid">
+          {WORLD_ZONES.map((zone) => {
+            const unlocked = isZoneUnlocked(game, zone);
+            const completed = game.world?.completedBosses?.includes(zone.id);
+            const clears = game.world?.clears?.[zone.id] || 0;
+            return (
+              <button
+                key={zone.id}
+                className={`zone-card ${selectedZoneId === zone.id ? "active" : ""} ${!unlocked ? "locked" : ""}`}
+                onClick={() => setSelectedZoneId(zone.id)}
+              >
+                <div className="zone-emoji">{zone.emoji}</div>
+                <div>
+                  <h3>{zone.name}</h3>
+                  <p>{zone.description}</p>
+                  <small>Level {zone.level}+ · Energy {zone.energyCost} · Clears {clears}</small>
+                  <b>{completed ? "Boss defeated ✅" : unlocked ? "Unlocked" : `Locked până la level ${zone.level}`}</b>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>{selectedZone.emoji} {selectedZone.name}</h2>
+            <p>Drop chance {Math.round(selectedZone.dropChance * 100)}% · Rarity boost +{selectedZone.rarityBoost}</p>
+          </div>
+          <div className="dungeon-actions">
+            <button onClick={() => startFight(false)}>Monster</button>
+            <button className="primary" onClick={() => startFight(true)}>Boss</button>
+          </div>
+        </div>
+
+        <div className="combatants">
+          <div className="combat-card hero">
+            <div className="avatar">🧙</div>
+            <h3>{game.playerName}</h3>
+            <p>Level {game.level} · {game.className}</p>
+            <Progress label="HP" value={heroHp} max={heroStats.hp} />
+            <Progress label="Mana" value={mana} max={heroStats.mana} />
+          </div>
+
+          <div className="combat-card enemy">
+            <div className="avatar">{enemy.emoji}</div>
+            <h3>{enemy.name}</h3>
+            <p>{enemy.isBoss ? "Boss" : "Monster"} · ATK {enemy.attack} · DEF {enemy.defense}</p>
+            <Progress label="Enemy HP" value={enemy.hp} max={enemy.maxHp} />
+          </div>
+        </div>
+
+        <div className="actions">
+          <button className="primary" disabled={busy} onClick={() => attack("normal")}>Atac normal</button>
+          <button className="primary alt" disabled={busy} onClick={() => attack("skill")}>{CLASSES[game.className].skill.name}</button>
+        </div>
+
+        <div className="battle-log dungeon-log">
           {log.map((item, idx) => <div key={`${item}-${idx}`}>{item}</div>)}
         </div>
       </div>
@@ -983,6 +1338,7 @@ function Game({ session }) {
       <nav className="tabs">
         <button className={tab === "city" ? "active" : ""} onClick={() => setTab("city")}>🏰 Oraș</button>
         <button className={tab === "battle" ? "active" : ""} onClick={() => setTab("battle")}>💀 Luptă</button>
+        <button className={tab === "world" ? "active" : ""} onClick={() => setTab("world")}>🗺️ World</button>
         <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>🎒 Inventory</button>
         <button className={tab === "hero" ? "active" : ""} onClick={() => setTab("hero")}>🧙 Erou</button>
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Questuri</button>
@@ -991,6 +1347,7 @@ function Game({ session }) {
 
       {tab === "city" && <City game={game} setGame={setGame} />}
       {tab === "battle" && <Battle game={game} setGame={setGame} />}
+      {tab === "world" && <Dungeon game={game} setGame={setGame} />}
       {tab === "inventory" && <Inventory game={game} setGame={setGame} />}
       {tab === "hero" && <Hero game={game} setGame={setGame} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
