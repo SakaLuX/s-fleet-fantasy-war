@@ -1909,3 +1909,127 @@ end;
 $$;
 
 grant execute on function public.admin_set_balance_v52(jsonb) to authenticated;
+
+
+-- =========================================================
+-- Update 53–60 · Beta Launch Polish
+-- Adds helper tables/functions for direct messages, reports,
+-- event scheduling, scout reports and beta launch summary.
+-- Safe to run multiple times.
+-- =========================================================
+
+create table if not exists public.player_direct_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid references auth.users(id) on delete set null,
+  recipient_email text,
+  body text not null check (char_length(body) between 1 and 1000),
+  is_read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table public.player_direct_messages enable row level security;
+
+-- Update 60 compatibility fix: older schemas created this table with receiver_id/message columns.
+-- These ALTER statements make the table compatible with the email-based DM flow.
+alter table public.player_direct_messages add column if not exists recipient_email text;
+alter table public.player_direct_messages add column if not exists body text;
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'player_direct_messages' and column_name = 'receiver_id') then
+    alter table public.player_direct_messages alter column receiver_id drop not null;
+  end if;
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'player_direct_messages' and column_name = 'message') then
+    alter table public.player_direct_messages alter column message drop not null;
+  end if;
+end $$;
+update public.player_direct_messages
+set body = coalesce(body, message, '')
+where body is null and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'player_direct_messages' and column_name = 'message');
+create index if not exists player_dm_recipient_email_created_idx on public.player_direct_messages(lower(recipient_email), created_at desc);
+
+drop policy if exists "Players can send direct messages" on public.player_direct_messages;
+create policy "Players can send direct messages"
+on public.player_direct_messages for insert to authenticated
+with check (auth.uid() = sender_id);
+
+drop policy if exists "Players can read sent or addressed messages" on public.player_direct_messages;
+create policy "Players can read sent or addressed messages"
+on public.player_direct_messages for select to authenticated
+using (auth.uid() = sender_id or lower(recipient_email) = lower(auth.email()));
+
+create table if not exists public.scout_reports (
+  id uuid primary key default gen_random_uuid(),
+  scout_id uuid references auth.users(id) on delete cascade,
+  target_user_id uuid references auth.users(id) on delete set null,
+  report jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.scout_reports enable row level security;
+
+drop policy if exists "Players can manage own scout reports" on public.scout_reports;
+create policy "Players can manage own scout reports"
+on public.scout_reports for all to authenticated
+using (auth.uid() = scout_id)
+with check (auth.uid() = scout_id);
+
+create table if not exists public.game_events (
+  id uuid primary key default gen_random_uuid(),
+  event_key text not null,
+  name text not null,
+  starts_at timestamptz not null default now(),
+  ends_at timestamptz not null,
+  config jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.game_events enable row level security;
+
+drop policy if exists "Players can read game events" on public.game_events;
+create policy "Players can read game events"
+on public.game_events for select to authenticated
+using (true);
+
+create table if not exists public.server_combat_logs (
+  id uuid primary key default gen_random_uuid(),
+  actor_id uuid references auth.users(id) on delete set null,
+  target_id uuid references auth.users(id) on delete set null,
+  combat_type text not null default 'audit',
+  result jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.server_combat_logs enable row level security;
+
+drop policy if exists "Players can read own combat logs" on public.server_combat_logs;
+create policy "Players can read own combat logs"
+on public.server_combat_logs for select to authenticated
+using (auth.uid() = actor_id or auth.uid() = target_id or public.is_admin_email(auth.email()));
+
+create or replace function public.beta_launch_summary()
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'version', 'Update 60 · Beta Launch Polish',
+    'players', (select count(*) from public.game_saves),
+    'active_events', (select count(*) from public.game_events where now() between starts_at and ends_at),
+    'direct_messages', (select count(*) from public.player_direct_messages),
+    'scout_reports', (select count(*) from public.scout_reports),
+    'systems', jsonb_build_array(
+      'Update 53 · Server-Side Combat Prep',
+      'Update 54 · Real Player Profile',
+      'Update 55 · Direct Messages',
+      'Update 56 · Guild Rank System',
+      'Update 57 · Guild Shop + Guild Research',
+      'Update 58 · Event Scheduler',
+      'Update 59 · City Scout System',
+      'Update 60 · Beta Launch Polish'
+    )
+  );
+$$;
+
+grant execute on function public.beta_launch_summary() to authenticated;

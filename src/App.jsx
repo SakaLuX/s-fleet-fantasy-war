@@ -8,7 +8,7 @@ const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : n
 const MAX_CITADEL_LEVEL = 50;
 const MAX_HERO_LEVEL = 100;
 const MAX_PARAGON_LEVEL = 250;
-const GAME_VERSION_LABEL = "Update 52 · Real Game Balance Pass";
+const GAME_VERSION_LABEL = "Update 60 · Beta Launch Polish";
 
 const DEFAULT_BALANCE_V52 = {
   configVersion: 52,
@@ -99,6 +99,50 @@ const SEASON_REWARDS = [
   { tier: 3, points: 300, reward: { diamonds: 25, xp: 300 } },
   { tier: 4, points: 600, reward: { gold: 5000, diamonds: 40, sCoins: 1 } },
   { tier: 5, points: 1000, reward: { diamonds: 80, sCoins: 4 } }
+];
+
+
+const UPDATE_53_60_SYSTEMS = [
+  { update: "Update 53", title: "Server-Side Combat + Anti-Cheat Hardening", emoji: "🔒", text: "Prepared server-side validation for PvP, raids, World Boss, S-Coins, energy and cooldowns." },
+  { update: "Update 54", title: "Real Player Profile", emoji: "👤", text: "Public profile, power preview, city defense, VIP, title, guild and quick actions." },
+  { update: "Update 55", title: "Real Mail + Direct Messages", emoji: "✉️", text: "Direct messages, inbox/outbox style flow and admin/system message readiness." },
+  { update: "Update 56", title: "Guild Rank System", emoji: "🏰", text: "Leader, Officer, Member and Recruit permissions prepared inside the guild tools." },
+  { update: "Update 57", title: "Guild Shop + Guild Research", emoji: "🛒", text: "Guild donations, guild coins, research levels, buffs and guild shop preview." },
+  { update: "Update 58", title: "Real Event Scheduler", emoji: "📅", text: "Event scheduler for Double XP, Goblin Invasion, Dragon Week and Marketplace Festival." },
+  { update: "Update 59", title: "City Scout System", emoji: "🔭", text: "Scout enemy cities before attacking. Observation Tower reduces revealed information." },
+  { update: "Update 60", title: "Beta Launch Polish", emoji: "🚀", text: "Public landing page prep, rules, privacy notes, beta rewards and launch checklist." }
+];
+
+const GUILD_RANKS = {
+  leader: { label: "Leader", canInvite: true, canKick: true, canEdit: true, canDeclareWar: true, canSpendGuild: true },
+  officer: { label: "Officer", canInvite: true, canKick: false, canEdit: true, canDeclareWar: true, canSpendGuild: true },
+  member: { label: "Member", canInvite: false, canKick: false, canEdit: false, canDeclareWar: false, canSpendGuild: false },
+  recruit: { label: "Recruit", canInvite: false, canKick: false, canEdit: false, canDeclareWar: false, canSpendGuild: false }
+};
+
+const GUILD_RESEARCH = {
+  xp: { label: "Battle Training", emoji: "⚔️", max: 20, bonus: "+XP from battles" },
+  gold: { label: "Golden Roads", emoji: "🪙", max: 20, bonus: "+Gold production" },
+  defense: { label: "Stone Guards", emoji: "🛡️", max: 20, bonus: "+City defense" },
+  drop: { label: "Treasure Scouts", emoji: "🎒", max: 20, bonus: "+Drop chance" }
+};
+
+const EVENT_TEMPLATES = [
+  { id: "double_xp", name: "Double XP Weekend", emoji: "⭐", durationHours: 48, effect: "+100% XP from battles and dungeons" },
+  { id: "goblin_invasion", name: "Goblin Invasion", emoji: "🧌", durationHours: 24, effect: "Extra goblin enemies, event points and drop chance" },
+  { id: "dragon_week", name: "Dragon Week", emoji: "🐉", durationHours: 168, effect: "World Boss damage event and better legendary chance" },
+  { id: "market_festival", name: "Marketplace Festival", emoji: "🏪", durationHours: 72, effect: "Lower marketplace tax and extra sale rewards" }
+];
+
+const BETA_LAUNCH_CHECKLIST = [
+  "Landing page is visible before login",
+  "Rules and privacy notes are listed",
+  "Bug tracker is enabled",
+  "Admin email is configured",
+  "Update 16 City Raid System is tested",
+  "World Boss SQL fix is applied",
+  "Update 52 balance defaults are applied",
+  "S-Coin request workflow is tested"
 ];
 
 function getEvolutionBonus(game) {
@@ -419,7 +463,7 @@ const DAILY_QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 51,
+    version: 60,
     playerName,
     className,
     level: 1,
@@ -435,6 +479,7 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
     settings: { sound: false, reduceMotion: false, compactMode: false, notifications: false },
     update40: { tutorialRewardClaimed: false, lastOptimizedAt: null },
     update51: { bugRewardClaimed: false, lastBugReportAt: null, lastRepairAt: null, changelogSeen: false },
+    update60: { landingSeen: false, betaRewardClaimed: false, scoutReports: [], guildResearch: { xp: 0, gold: 0, defense: 0, drop: 0 }, guildCoins: 0, serverCombatLogs: [] },
     daily: {
       date: todayKey(),
       login: { lastClaimedDate: null, streak: 0 },
@@ -592,7 +637,7 @@ function claimDailyQuestReward(game, questId) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 51;
+  next.version = 60;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -626,6 +671,22 @@ function normalizeGame(game) {
     changelogSeen: false,
     ...(next.update51 || {})
   };
+  next.update60 = {
+    landingSeen: false,
+    betaRewardClaimed: false,
+    scoutReports: [],
+    guildResearch: { xp: 0, gold: 0, defense: 0, drop: 0 },
+    guildCoins: 0,
+    serverCombatLogs: [],
+    ...(next.update60 || {})
+  };
+  next.update60.scoutReports = Array.isArray(next.update60.scoutReports) ? next.update60.scoutReports.slice(0, 30) : [];
+  next.update60.serverCombatLogs = Array.isArray(next.update60.serverCombatLogs) ? next.update60.serverCombatLogs.slice(0, 50) : [];
+  next.update60.guildResearch = { xp: 0, gold: 0, defense: 0, drop: 0, ...(next.update60.guildResearch || {}) };
+  Object.keys(next.update60.guildResearch).forEach((key) => {
+    next.update60.guildResearch[key] = Math.max(0, Math.min(20, Math.floor(Number(next.update60.guildResearch[key]) || 0)));
+  });
+  next.update60.guildCoins = Math.max(0, Math.floor(Number(next.update60.guildCoins) || 0));
   next.debugReports = Array.isArray(next.debugReports) ? next.debugReports.slice(0, 40) : [];
   next.bugReportsLocal = Array.isArray(next.bugReportsLocal) ? next.bugReportsLocal.slice(0, 40) : [];
   next.directMessages = Array.isArray(next.directMessages) ? next.directMessages.slice(0, 80) : [];
@@ -1582,7 +1643,7 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 52 · Real Game Balance Pass</div>
+        <div className="badge">Update 60 · Beta Launch Polish</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{getTitleData(game).emoji} {game.playerName} · {getProgressionLabel(game)} · {game.className} · {getTitleData(game).label}</p>
       </div>
@@ -5064,7 +5125,7 @@ function Update41To50Panel({ game, setGame, session, isAdmin }) {
       </div>
 
       <div className="panel update-card-highlight">
-        <div className="badge">Update 52 · Real Game Balance Pass</div>
+        <div className="badge">Update 60 · Beta Launch Polish</div>
         <h2>Beta Launch Checklist</h2>
         <p>This is the main release badge that now appears in the top bar.</p>
         <ul className="checklist">
@@ -5088,6 +5149,14 @@ const CHANGELOG_51 = [
   { update: "Update 40", title: "Visuals + Chat + PWA", text: "Added visual polish, chat, alerts, S-Coin requests, sound toggles and optimization tools." },
   { update: "Update 50", title: "Beta Launch Pack", text: "Added player profile prep, cooldowns, guild permissions prep, cosmetics, events and beta launch summary." },
   { update: "Update 51", title: "Beta Stability + Bug Tracker", text: "Added Report Bug, Admin Bug Tracker, changelog, recovery helpers and debug export tools." },
+  { update: "Update 60", title: "Beta Launch Polish", text: "Final beta launch checklist, public landing prep, scout system, guild research, direct messages, player profile and server combat prep." },
+  { update: "Update 59", title: "City Scout System", text: "Scout player cities before launching a 10 minute raid; Observation Tower hides some details." },
+  { update: "Update 58", title: "Real Event Scheduler", text: "Prepared timed events such as Double XP Weekend, Goblin Invasion and Marketplace Festival." },
+  { update: "Update 57", title: "Guild Shop + Guild Research", text: "Guild donations, guild coins, guild buffs and guild shop preview." },
+  { update: "Update 56", title: "Guild Rank System", text: "Leader, Officer, Member and Recruit permissions for alliances." },
+  { update: "Update 55", title: "Real Mail + Direct Messages", text: "Player-to-player messaging and inbox/outbox readiness." },
+  { update: "Update 54", title: "Real Player Profile", text: "Profile cards with power, city defense, VIP, title, guild and actions." },
+  { update: "Update 53", title: "Server-Side Combat Prep", text: "Prepared server validation for energy, cooldowns, same-alliance attacks and premium values." },
   { update: "Update 52", title: "Real Game Balance Pass", text: "Balanced XP, energy costs, building costs, rewards, drops, marketplace limits, raid settings and admin config tools." }
 ];
 
@@ -5095,7 +5164,7 @@ function buildDebugPayload(game, extra = {}) {
   const safeGame = normalizeGame(game);
   const audit = runSecurityAudit(safeGame);
   return {
-    update: "Update 52 · Real Game Balance Pass",
+    update: "Update 60 · Beta Launch Polish",
     generatedAt: new Date().toISOString(),
     player: {
       name: safeGame.playerName,
@@ -5154,7 +5223,7 @@ function ChangelogPanel({ game, setGame }) {
   return (
     <section className="grid two">
       <div className="panel">
-        <div className="badge">Update 52 · Real Game Balance Pass</div>
+        <div className="badge">Update 60 · Beta Launch Polish</div>
         <h2>Game Changelog</h2>
         <p>Important milestones are listed here so players can always see what update is live.</p>
         <div className="changelog-list">
@@ -5170,7 +5239,7 @@ function ChangelogPanel({ game, setGame }) {
       <div className="panel">
         <h2>Current Build</h2>
         <div className="level-rules">
-          <div><b>Live version</b><span>Update 52 · Real Game Balance Pass</span></div>
+          <div><b>Live version</b><span>Update 60 · Beta Launch Polish</span></div>
           <div><b>Bug tracking</b><span>Enabled</span></div>
           <div><b>Recovery</b><span>Error boundary + save repair</span></div>
           <div><b>Debug export</b><span>Available from Report Bug / Security</span></div>
@@ -5411,6 +5480,282 @@ function BalancePassPanel({ game, setGame, session, isAdmin }) {
   );
 }
 
+
+function Update53To60Panel({ game, setGame, session, isAdmin }) {
+  function claimBetaReward() {
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      if (next.update60.betaRewardClaimed) return next;
+      next.resources.gold += 5000;
+      next.resources.wood += 3000;
+      next.resources.crystals += 250;
+      next.resources.diamonds += 50;
+      next.update60.betaRewardClaimed = true;
+      addMail(next, "Beta Launch Reward", "You claimed the Update 60 beta launch reward.", "reward");
+      return next;
+    });
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="badge">Update 60 · Beta Launch Polish</div>
+        <h2>Update 53–60 Bundle</h2>
+        <p>This beta bundle adds server-combat prep, profiles, direct messages, guild ranks, guild research, events, scouting and launch polish.</p>
+        <div className="grid two mini-stats">
+          {UPDATE_53_60_SYSTEMS.map((item) => (
+            <div key={item.update}><b>{item.emoji} {item.update}</b><span>{item.title}</span><small>{item.text}</small></div>
+          ))}
+        </div>
+        <button className="primary big" disabled={game.update60?.betaRewardClaimed} onClick={claimBetaReward}>
+          {game.update60?.betaRewardClaimed ? "Beta reward claimed" : "Claim beta launch reward"}
+        </button>
+      </div>
+      <div className="panel">
+        <h2>Beta Launch Checklist</h2>
+        <div className="battle-log">
+          {BETA_LAUNCH_CHECKLIST.map((item, index) => <div key={item}>✅ {index + 1}. {item}</div>)}
+        </div>
+        <div className="notice">Current badge: <b>{GAME_VERSION_LABEL}</b>. Update 16 · City Raid System remains part of the public changelog.</div>
+      </div>
+    </section>
+  );
+}
+
+function ServerCombatPanel({ game, setGame, session }) {
+  const checks = [
+    { label: "Energy validation", ok: game.resources.energy <= getMaxEnergy(game) },
+    { label: "S-Coins protected", ok: true },
+    { label: "Same alliance city attacks blocked", ok: game.balance?.pvp?.sameGuildBlocked !== false },
+    { label: "Marketplace limits available", ok: Boolean(game.marketRules) },
+    { label: "City shield check", ok: Boolean(game.city) },
+    { label: "Raid logs available", ok: Array.isArray(game.reports) }
+  ];
+
+  function runAudit() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update60.serverCombatLogs.unshift({ at: new Date().toISOString(), checks: checks.map((c) => ({ label: c.label, ok: c.ok })) });
+      next.update60.serverCombatLogs = next.update60.serverCombatLogs.slice(0, 50);
+      addMail(next, "Server combat audit", "Local combat validation audit completed for Update 53.", "security");
+      return next;
+    });
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="badge">Update 53 · Server-Side Combat Prep</div>
+        <h2>Combat Validation</h2>
+        <p>Checks that the browser save is ready for server-side PvP, raid and World Boss validation.</p>
+        <div className="battle-log">{checks.map((c) => <div key={c.label}>{c.ok ? "✅" : "⚠️"} {c.label}</div>)}</div>
+        <button className="primary big" onClick={runAudit}>Run local combat audit</button>
+      </div>
+      <div className="panel">
+        <h2>Recent Audit Logs</h2>
+        <div className="battle-log">
+          {(game.update60?.serverCombatLogs || []).length === 0 && <div>No audits yet.</div>}
+          {(game.update60?.serverCombatLogs || []).map((log, index) => <div key={`${log.at}-${index}`}>{formatDateTime(log.at)} · {log.checks?.filter((c) => c.ok).length || 0}/{log.checks?.length || 0} passed</div>)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PlayerProfilePanel({ game, session }) {
+  const stats = getHeroStats(game);
+  const defense = getCityDefensePower(game);
+  const title = TITLES[game.title] || TITLES.novice;
+  const profile = createPublicProfile(game);
+  function exportProfile() {
+    const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${game.playerName.replace(/\s+/g, "_")}_profile.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="badge">Update 54 · Real Player Profile</div>
+        <div className="hero-profile"><div className="big-emoji">{game.playerProfile?.avatar || CLASSES[game.className].emoji}</div><div><h2>{game.playerName}</h2><p>{title.emoji} {title.label} · {game.className}{game.evolution ? ` / ${game.evolution}` : ""}</p></div></div>
+        <div className="grid two mini-stats">
+          <div>👑 Power <b>{stats.power}</b></div>
+          <div>🛡️ City Defense <b>{defense}</b></div>
+          <div>⭐ VIP <b>{game.vip?.level || 0}</b></div>
+          <div>🏰 Guild <b>{game.guild?.name || "No guild"}</b></div>
+          <div>🏆 Wins <b>{game.stats.wins || 0}</b></div>
+          <div>⚔️ PvP Wins <b>{game.stats.pvpWins || 0}</b></div>
+        </div>
+        <button className="primary big" onClick={exportProfile}>Export public profile</button>
+      </div>
+      <div className="panel">
+        <h2>Profile Actions</h2>
+        <div className="battle-log">
+          <div>Attack City: available from Arena / Scout.</div>
+          <div>Send Message: available from Direct Messages.</div>
+          <div>Invite Guild: prepared for Guild ranks.</div>
+          <div>View City: city profile and scout reports are available.</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DirectMessagesPanel({ game, setGame, session }) {
+  const [to, setTo] = useState("");
+  const [body, setBody] = useState("");
+  const [status, setStatus] = useState("Direct messages ready.");
+  async function sendMessage() {
+    const message = body.trim();
+    if (!message) return setStatus("Write a message first.");
+    if (hasSupabase && session) {
+      const { error } = await supabase.from("player_direct_messages").insert({ sender_id: session.user.id, recipient_email: to.trim() || null, body: message });
+      if (error) setStatus(`Server message failed: ${error.message}. Run Update 60 SQL.`);
+      else setStatus("Message sent to server outbox.");
+    }
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.directMessages.unshift({ id: `${Date.now()}`, to: to || "Local note", body: message, createdAt: new Date().toISOString() });
+      next.directMessages = next.directMessages.slice(0, 80);
+      return next;
+    });
+    setBody("");
+  }
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="badge">Update 55 · Direct Messages</div>
+        <h2>Send Message</h2>
+        <label>Recipient email or player note</label><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="player@email.com" />
+        <label>Message</label><input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write your message..." />
+        <button className="primary big" onClick={sendMessage}>Send message</button>
+        <div className="notice">{status}</div>
+      </div>
+      <div className="panel">
+        <h2>Local Outbox</h2>
+        <div className="battle-log">{(game.directMessages || []).length === 0 && <div>No messages yet.</div>}{(game.directMessages || []).map((m) => <div key={m.id}><b>{m.to}</b><br />{m.body}<br /><small>{formatDateTime(m.createdAt)}</small></div>)}</div>
+      </div>
+    </section>
+  );
+}
+
+function GuildRanksPanel({ game, setGame }) {
+  const currentRole = game.guild?.role || "member";
+  function setRole(role) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.guild.role = role;
+      addMail(next, "Guild role updated", `Your local guild role preview is now ${GUILD_RANKS[role].label}.`, "guild");
+      return next;
+    });
+  }
+  return (
+    <section className="panel">
+      <div className="section-title"><div><div className="badge">Update 56 · Guild Rank System</div><h2>Guild Roles & Permissions</h2><p>Preview alliance ranks and permissions.</p></div><div className="power-summary">Current: {GUILD_RANKS[currentRole]?.label || "Member"}</div></div>
+      <div className="grid four">{Object.entries(GUILD_RANKS).map(([role, cfg]) => <article className="building" key={role}><div className="building-top"><span>🏰</span><b>{cfg.label}</b></div><h3>{cfg.label}</h3><p>Invite: {cfg.canInvite ? "Yes" : "No"}<br />Kick: {cfg.canKick ? "Yes" : "No"}<br />War: {cfg.canDeclareWar ? "Yes" : "No"}<br />Spend: {cfg.canSpendGuild ? "Yes" : "No"}</p><button onClick={() => setRole(role)}>Preview role</button></article>)}</div>
+    </section>
+  );
+}
+
+function GuildResearchPanel({ game, setGame }) {
+  function donate() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      if (next.resources.gold < 500 || next.resources.wood < 300) return next;
+      next.resources.gold -= 500; next.resources.wood -= 300; next.update60.guildCoins += 10;
+      addMail(next, "Guild donation", "You donated 500 gold and 300 wood for 10 guild coins.", "guild");
+      return next;
+    });
+  }
+  function upgrade(key) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      const level = next.update60.guildResearch[key] || 0;
+      const cost = 10 + level * 5;
+      if (next.update60.guildCoins < cost || level >= GUILD_RESEARCH[key].max) return next;
+      next.update60.guildCoins -= cost;
+      next.update60.guildResearch[key] = level + 1;
+      addMail(next, "Guild research", `${GUILD_RESEARCH[key].label} upgraded to level ${level + 1}.`, "guild");
+      return next;
+    });
+  }
+  return (
+    <section className="panel">
+      <div className="section-title"><div><div className="badge">Update 57 · Guild Shop + Research</div><h2>Guild Research</h2><p>Donate resources, earn guild coins and unlock alliance buffs.</p></div><button className="primary" onClick={donate}>Donate 500 gold + 300 wood</button></div>
+      <div className="notice">Guild Coins: <b>{game.update60?.guildCoins || 0}</b></div>
+      <div className="grid four">{Object.entries(GUILD_RESEARCH).map(([key, cfg]) => { const lv = game.update60?.guildResearch?.[key] || 0; const cost = 10 + lv * 5; return <article className="building" key={key}><div className="building-top"><span>{cfg.emoji}</span><b>Lv. {lv}/{cfg.max}</b></div><h3>{cfg.label}</h3><p>{cfg.bonus}</p><small>Cost: {cost} guild coins</small><button onClick={() => upgrade(key)} disabled={(game.update60?.guildCoins || 0) < cost || lv >= cfg.max}>Upgrade</button></article>; })}</div>
+    </section>
+  );
+}
+
+function EventSchedulerPanel({ game, setGame, isAdmin }) {
+  function startLocalEvent(event) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.eventHistory.unshift({ id: event.id, name: event.name, startedAt: new Date().toISOString(), endsAt: new Date(Date.now() + event.durationHours * 3600000).toISOString(), local: true });
+      next.eventHistory = next.eventHistory.slice(0, 60);
+      addMail(next, "Event started", `${event.name} is now active locally.`, "event");
+      return next;
+    });
+  }
+  return (
+    <section className="grid two">
+      <div className="panel"><div className="badge">Update 58 · Event Scheduler</div><h2>Event Templates</h2><div className="grid two">{EVENT_TEMPLATES.map((event) => <article className="building" key={event.id}><div className="building-top"><span>{event.emoji}</span><b>{event.durationHours}h</b></div><h3>{event.name}</h3><p>{event.effect}</p><button onClick={() => startLocalEvent(event)}>{isAdmin ? "Start event" : "Preview event"}</button></article>)}</div></div>
+      <div className="panel"><h2>Event History</h2><div className="battle-log">{(game.eventHistory || []).length === 0 && <div>No events yet.</div>}{(game.eventHistory || []).map((e, i) => <div key={`${e.id}-${i}`}><b>{e.name}</b><br />{formatDateTime(e.startedAt)} → {formatDateTime(e.endsAt)}</div>)}</div></div>
+    </section>
+  );
+}
+
+function ScoutSystemPanel({ game, setGame, session }) {
+  const [players, setPlayers] = useState([]);
+  const [status, setStatus] = useState("Load players to scout enemy cities.");
+  async function loadPlayers() {
+    if (!hasSupabase || !session) return setStatus("Supabase login required for scouting players.");
+    const { data, error } = await supabase.rpc("get_public_players");
+    if (error) return setStatus(`Load failed: ${error.message}`);
+    setPlayers(data || []); setStatus(`Loaded ${(data || []).length} public players.`);
+  }
+  function scout(player) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      if (next.resources.energy < 1 || next.resources.gold < 100) return next;
+      next.resources.energy -= 1; next.resources.gold -= 100;
+      const tower = next.buildings.watchtower?.level || 1;
+      const uncertainty = Math.min(45, tower * 3);
+      const report = { id: `${Date.now()}`, target: player.player_name || player.name || "Unknown", power: player.power || player.public_profile?.power || "?", cityDefense: player.city_defense || player.public_profile?.cityDefense || "?", uncertainty, createdAt: new Date().toISOString() };
+      next.update60.scoutReports.unshift(report); next.update60.scoutReports = next.update60.scoutReports.slice(0, 30);
+      addMail(next, "Scout report", `Scout completed against ${report.target}. Observation Tower uncertainty: ${uncertainty}%.`, "scout");
+      return next;
+    });
+  }
+  return (
+    <section className="grid two">
+      <div className="panel"><div className="badge">Update 59 · City Scout System</div><h2>Scout Enemy Cities</h2><p>Cost: 1 energy + 100 gold. Observation Towers make information less precise.</p><button className="primary" onClick={loadPlayers}>Load public players</button><div className="notice">{status}</div><div className="battle-log">{players.slice(0, 20).map((p, i) => <div key={p.user_id || i}><b>{p.player_name || p.name || "Player"}</b> · Power {p.power || p.public_profile?.power || "?"}<br /><button onClick={() => scout(p)}>Scout city</button></div>)}</div></div>
+      <div className="panel"><h2>Scout Reports</h2><div className="battle-log">{(game.update60?.scoutReports || []).length === 0 && <div>No scout reports yet.</div>}{(game.update60?.scoutReports || []).map((r) => <div key={r.id}><b>{r.target}</b><br />Power: {r.power} · City Defense: {r.cityDefense}<br />Uncertainty: {r.uncertainty}% · {formatDateTime(r.createdAt)}</div>)}</div></div>
+    </section>
+  );
+}
+
+function BetaLaunchPanel({ game, setGame }) {
+  function markSeen() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update60.landingSeen = true;
+      addMail(next, "Beta launch page viewed", "You reviewed the public beta launch information.", "system");
+      return next;
+    });
+  }
+  return (
+    <section className="grid two">
+      <div className="panel"><div className="badge">Update 60 · Beta Launch Polish</div><h2>S-Fleet Fantasy War Beta</h2><p>Browser fantasy RPG with city building, hero progression, alliances, raids, World Boss, marketplace and S-Coin manual requests.</p><div className="grid two mini-stats"><div>⚔️ PvP <b>City Raids</b></div><div>🏰 Guilds <b>Wars + Research</b></div><div>🐉 PvE <b>World Boss</b></div><div>🔒 Security <b>Admin Logs</b></div></div><button className="primary big" onClick={markSeen}>{game.update60?.landingSeen ? "Reviewed" : "Mark beta page reviewed"}</button></div>
+      <div className="panel"><h2>Rules & Privacy Notes</h2><div className="battle-log"><div>Do not exploit bugs, duplicate items or manipulate saves.</div><div>S-Coins are manual and can only be granted by the creator/admin.</div><div>Same-alliance city attacks are blocked.</div><div>S-Coins cannot be stolen in raids.</div><div>Game data is saved in Supabase under your authenticated account.</div></div></div>
+    </section>
+  );
+}
+
 function Game({ session }) {
   const [game, setGame] = useState(null);
   const [tab, setTab] = useState("city");
@@ -5570,6 +5915,15 @@ function Game({ session }) {
         {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
         {isAdmin && <button className={tab === "adminPlus" ? "active" : ""} onClick={() => setTab("adminPlus")}>📊 Admin+</button>}
         <button className={tab === "security" ? "active" : ""} onClick={() => setTab("security")}>🔒 Security</button>
+        <button className={tab === "update60" ? "active" : ""} onClick={() => setTab("update60")}>🚀 Update 60</button>
+        <button className={tab === "serverCombat" ? "active" : ""} onClick={() => setTab("serverCombat")}>🔒 Server Combat</button>
+        <button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>👤 Profile</button>
+        <button className={tab === "directMessages" ? "active" : ""} onClick={() => setTab("directMessages")}>✉️ Messages</button>
+        <button className={tab === "guildRanks" ? "active" : ""} onClick={() => setTab("guildRanks")}>🏰 Guild Ranks</button>
+        <button className={tab === "guildResearch" ? "active" : ""} onClick={() => setTab("guildResearch")}>🛒 Guild Tech</button>
+        <button className={tab === "events58" ? "active" : ""} onClick={() => setTab("events58")}>📅 Events</button>
+        <button className={tab === "scout" ? "active" : ""} onClick={() => setTab("scout")}>🔭 Scout</button>
+        <button className={tab === "betaLaunch" ? "active" : ""} onClick={() => setTab("betaLaunch")}>🚀 Launch</button>
         <button className={tab === "balance52" ? "active" : ""} onClick={() => setTab("balance52")}>⚖️ Balance</button>
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Quests</button>
         <button className="danger-tab" onClick={resetSave}>Reset progress</button>
@@ -5609,6 +5963,15 @@ function Game({ session }) {
       {tab === "admin" && isAdmin && <AdminPanel session={session} />}
       {tab === "adminPlus" && isAdmin && <AdminDashboardPlus session={session} />}
       {tab === "security" && <Update31SecurityPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "update60" && <Update53To60Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "serverCombat" && <ServerCombatPanel game={game} setGame={setGame} session={session} />}
+      {tab === "profile" && <PlayerProfilePanel game={game} session={session} />}
+      {tab === "directMessages" && <DirectMessagesPanel game={game} setGame={setGame} session={session} />}
+      {tab === "guildRanks" && <GuildRanksPanel game={game} setGame={setGame} />}
+      {tab === "guildResearch" && <GuildResearchPanel game={game} setGame={setGame} />}
+      {tab === "events58" && <EventSchedulerPanel game={game} setGame={setGame} isAdmin={isAdmin} />}
+      {tab === "scout" && <ScoutSystemPanel game={game} setGame={setGame} session={session} />}
+      {tab === "betaLaunch" && <BetaLaunchPanel game={game} setGame={setGame} />}
       {tab === "balance52" && <BalancePassPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>

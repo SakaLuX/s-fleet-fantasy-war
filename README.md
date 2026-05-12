@@ -1,58 +1,40 @@
-# S-Fleet Fantasy War ⚔️ — Update 52
+# S-Fleet Fantasy War ⚔️ — Update 60
 
-## Update 52 · Real Game Balance Pass
-
-This update focuses on making the beta version more balanced and playable before more feature expansion.
+Mega bundle: Update 53–60.
 
 ## Included
 
-- Version badge updated to **Update 52 · Real Game Balance Pass**
-- New **⚖️ Balance** tab
-- Local balance normalization tool
-- Export current balance config
-- Admin server-side balance JSON loader/saver
-- XP multiplier support
-- Balanced building costs by level phase
-- Balanced monster reward multipliers
-- Balanced battle/dungeon/world boss energy costs
-- Balanced item drop chances
-- Marketplace min/max/tax rules shown in the new panel
-- Raid/PvP balance values documented for the next server-side combat update
+- Update 53 · Server-Side Combat + Anti-Cheat Hardening prep
+- Update 54 · Real Player Profile
+- Update 55 · Real Mail + Direct Messages
+- Update 56 · Guild Rank System
+- Update 57 · Guild Shop + Guild Research
+- Update 58 · Real Event Scheduler
+- Update 59 · City Scout System
+- Update 60 · Beta Launch Polish
 
-## Build
+## Supabase
+
+Run the full SQL from:
+
+```txt
+supabase/schema.sql
+```
+
+in Supabase SQL Editor. It is safe to run multiple times.
+
+## Netlify
+
+Build command:
 
 ```txt
 npm run build
 ```
 
-Build passes. A large bundle warning can appear; it does not block deploy.
-
-## Supabase
-
-Run the new SQL:
+Publish directory:
 
 ```txt
-Supabase → SQL Editor → New query → paste supabase/schema.sql → Run
-```
-
-This adds/updates:
-
-- `admin_get_balance_v52()`
-- `admin_set_balance_v52(new_config jsonb)`
-- Update 52 default balance config in `game_balance_config`
-- Admin logging for balance changes
-
-## Deploy
-
-Upload all files to GitHub, replacing the existing project files.
-
-Netlify settings remain:
-
-```txt
-Build command: npm run build
-Publish directory: dist
-Base directory: empty
-Functions directory: empty
+dist
 ```
 
 Environment variables remain:
