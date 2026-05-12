@@ -1,5 +1,6 @@
--- S-Fleet Fantasy War ⚔️
--- Rulează tot scriptul în Supabase Dashboard > SQL Editor > New query.
+-- S-Fleet Fantasy War ⚔️ — Update 7
+-- Rulează tot scriptul în Supabase Dashboard > SQL Editor > New query > Run.
+-- Păstrează salvările existente și adaugă profil public pentru Leaderboard + PvP.
 
 create table if not exists public.game_saves (
   id uuid primary key default gen_random_uuid(),
@@ -10,6 +11,8 @@ create table if not exists public.game_saves (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.game_saves add column if not exists public_profile jsonb not null default '{}'::jsonb;
 
 alter table public.game_saves enable row level security;
 
@@ -59,3 +62,31 @@ for each row
 execute function public.set_updated_at();
 
 create index if not exists game_saves_user_id_idx on public.game_saves(user_id);
+create index if not exists game_saves_public_power_idx on public.game_saves(((public_profile->>'power')::int));
+
+create or replace function public.get_public_players(limit_count int default 50)
+returns table (
+  user_id uuid,
+  player_name text,
+  class_name text,
+  public_profile jsonb,
+  updated_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    gs.user_id,
+    gs.player_name,
+    gs.class_name,
+    gs.public_profile,
+    gs.updated_at
+  from public.game_saves gs
+  where gs.public_profile is not null
+    and gs.public_profile <> '{}'::jsonb
+  order by coalesce((gs.public_profile->>'power')::int, 0) desc, gs.updated_at desc
+  limit greatest(1, least(limit_count, 100));
+$$;
+
+grant execute on function public.get_public_players(int) to authenticated;

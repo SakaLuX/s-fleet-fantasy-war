@@ -1075,3 +1075,199 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* Update 7: visual city map, leaderboard, PvP, recovery */
+.city-map-card {
+  margin: 18px 0;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 28px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(56,189,248,.16), rgba(34,197,94,.10));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 20px 60px rgba(0,0,0,.24);
+}
+
+.city-skyline {
+  position: relative;
+  min-height: 390px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(251,191,36,.30), transparent 12%),
+    linear-gradient(180deg, rgba(14,165,233,.20), rgba(15,23,42,.72) 55%, rgba(22,101,52,.28));
+}
+
+.city-sun {
+  position: absolute;
+  top: 22px;
+  right: 32px;
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(251,191,36,.16);
+  border: 1px solid rgba(251,191,36,.24);
+  font-size: 28px;
+}
+
+.city-mountains {
+  position: absolute;
+  inset: auto 0 145px;
+  height: 130px;
+  background:
+    linear-gradient(135deg, transparent 0 30%, rgba(148,163,184,.22) 30% 50%, transparent 50%) 0 0/260px 130px,
+    linear-gradient(225deg, transparent 0 35%, rgba(100,116,139,.26) 35% 55%, transparent 55%) 80px 20px/280px 130px;
+  opacity: .8;
+}
+
+.city-river {
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  bottom: 20px;
+  height: 86px;
+  transform: rotate(-2deg);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(56,189,248,.28), rgba(14,165,233,.16), rgba(125,211,252,.30));
+  border: 1px solid rgba(125,211,252,.20);
+}
+
+.city-road {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 240px;
+  height: 18px;
+  transform-origin: left center;
+  border-radius: 999px;
+  background: rgba(251,191,36,.18);
+  border: 1px solid rgba(251,191,36,.18);
+}
+
+.road-one { transform: rotate(24deg); }
+.road-two { transform: rotate(152deg); }
+
+.map-building {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 118px;
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 24px;
+  color: #fff;
+  background: rgba(15,23,42,.78);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 45px rgba(0,0,0,.32);
+}
+
+.map-building.large {
+  width: 150px;
+  min-height: 138px;
+  border-color: rgba(251,191,36,.45);
+  background: linear-gradient(135deg, rgba(251,191,36,.20), rgba(15,23,42,.82));
+}
+
+.map-building span { font-size: 34px; }
+.map-building.large span { font-size: 48px; }
+.map-building b { color: #fde68a; }
+.map-building small { color: #cbd5e1; font-weight: 850; }
+.map-building:hover { transform: translate(-50%, -53%); filter: brightness(1.08); }
+
+.map-paladin {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(96,165,250,.28);
+  background: rgba(37,99,235,.18);
+  color: #dbeafe;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 950;
+  box-shadow: 0 14px 32px rgba(30,64,175,.22);
+}
+
+.leaderboard-list {
+  display: grid;
+  gap: 10px;
+  max-height: 620px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 52px 1.3fr .8fr .9fr .8fr 1fr;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 18px;
+  background: rgba(255,255,255,.055);
+  padding: 12px;
+}
+
+.leaderboard-row.self {
+  border-color: rgba(251,191,36,.42);
+  background: rgba(251,191,36,.10);
+}
+
+.leaderboard-row b,
+.leaderboard-row strong { color: #fde68a; }
+.leaderboard-row small { color: #cbd5e1; }
+.lb-name { font-weight: 950; color: #fff; }
+
+.pvp-card,
+.opponent-preview {
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 24px;
+  background: rgba(255,255,255,.055);
+  padding: 16px;
+}
+
+.opponent-preview {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.avatar.small {
+  width: 54px;
+  height: 54px;
+  font-size: 28px;
+  margin-bottom: 0;
+}
+
+.pvp-log {
+  margin-top: 16px;
+}
+
+.recovery-panel {
+  max-width: 760px;
+}
+
+@media (max-width: 1050px) {
+  .leaderboard-row {
+    grid-template-columns: 42px 1fr;
+  }
+
+  .leaderboard-row span,
+  .leaderboard-row strong,
+  .leaderboard-row small {
+    grid-column: 2;
+  }
+
+  .city-skyline {
+    min-height: 540px;
+  }
+
+  .map-building {
+    width: 105px;
+  }
+
+  .map-building.large {
+    width: 130px;
+  }
+}

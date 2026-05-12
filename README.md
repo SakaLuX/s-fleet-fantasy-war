@@ -1,58 +1,70 @@
-# S-Fleet Fantasy War ⚔️ — Update 6
+# S-Fleet Fantasy War ⚔️ — Update 7
 
-Update 6 adaugă progresie avansată și companion systems:
+Update 7 adaugă:
 
-- Hero max level: **100**
-- După level 100, progresia continuă ca **Paragon Level**, până la **Paragon 250**
-- Energia pornește de la **10** și crește cu **+1** pe fiecare level/paragon
-- Tab nou: **🐴 Companions**
-- Mount-uri cu bonusuri de HP, Attack, Defense, Mana, Energy și Power
-- Mount gratuit de început: **Brown Horse**
-- Mount-uri unlockabile: **War Wolf**, **Crystal Stag**, **Dragon Whelp**
-- Paladin Companion:
-  - **Protejează orașul**: bonus la producția/oră și city power
-  - **Ajută în lupte**: adaugă stats și lovește inamicul în combat
-- Paladinul poate fi antrenat până la level 100
-- Compatibil cu salvările existente
+- fix pentru ecran negru: safe loader + error recovery panel
+- hartă vizuală în oraș, cu clădiri clickabile
+- Leaderboard după Power
+- PvP Arena simplu între jucători
+- profil public limitat pentru leaderboard/PvP
+- compatibilitate cu salvările vechi
 
-## Supabase
+## Foarte important
 
-Nu trebuie modificată tabela Supabase. Totul se salvează în același câmp JSONB `data` din `game_saves`.
-
-## Cum faci update pe GitHub
-
-1. Descarcă ZIP-ul Update 6.
-2. Dezarhivează-l.
-3. Intră în repository-ul GitHub `s-fleet-fantasy-war`.
-4. Apasă **Add file → Upload files**.
-5. Încarcă toate fișierele/folderele din pachet.
-6. Apasă **Commit changes**.
-7. Netlify va porni deploy automat.
-
-## Dacă Netlify nu pornește automat
+Pentru Leaderboard și PvP trebuie rulat scriptul SQL actualizat:
 
 ```txt
-Netlify
-→ site-ul tău
-→ Deploys
-→ Trigger deploy
-→ Deploy site
+supabase/schema.sql
 ```
 
-## Build settings Netlify
+Acesta adaugă coloana `public_profile` și funcția `get_public_players()`.
+Nu șterge salvările existente.
+
+## Pași update
+
+1. Dezarhivează pachetul.
+2. Intră în GitHub repository-ul jocului.
+3. Înlocuiește fișierele cu cele din acest update.
+4. Commit changes.
+5. Netlify va face deploy automat.
+6. În Supabase > SQL Editor > New query, rulează tot scriptul din `supabase/schema.sql`.
+7. Intră în joc, fă o acțiune mică sau așteaptă salvarea automată.
+8. Intră la tabul `🏆 Arena`.
+
+## Dacă site-ul încă apare negru
+
+1. Verifică în GitHub să fie fișierele direct în root:
+
+```txt
+package.json
+index.html
+src/App.jsx
+src/styles.css
+supabase/schema.sql
+netlify.toml
+```
+
+2. În Netlify verifică:
 
 ```txt
 Build command: npm run build
 Publish directory: dist
 Base directory: gol
-Functions directory: gol
 ```
 
-## Environment variables rămân aceleași
+3. Trigger deploy manual:
+
+```txt
+Netlify > Deploys > Trigger deploy > Deploy site
+```
+
+## Supabase
+
+Variabilele rămân aceleași:
 
 ```txt
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
 ```
 
-Nu pune parola bazei de date, nu pune `service_role`, nu pune `secret key`.
+Nu pune parola bazei de date, `service_role` sau `secret key` în Netlify.
