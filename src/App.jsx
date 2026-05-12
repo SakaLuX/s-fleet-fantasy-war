@@ -575,7 +575,7 @@ function claimDailyQuestReward(game, questId) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 40;
+  next.version = 50;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -591,6 +591,34 @@ function normalizeGame(game) {
   next.city = { lastResourceCollectionAt: null, shieldUntil: null, ...(next.city || {}) };
   next.settings = { sound: false, reduceMotion: false, compactMode: false, notifications: false, ...(next.settings || {}) };
   next.update40 = { tutorialRewardClaimed: false, lastOptimizedAt: null, ...(next.update40 || {}) };
+  next.update50 = {
+    pvpCooldownHours: 2,
+    marketplaceTax: 5,
+    chatCooldownSeconds: 5,
+    activeTitle: "Beta Founder",
+    citySkin: "Royal Citadel",
+    serverCombatEnabled: true,
+    publicLandingEnabled: true,
+    betaChecklist: { profile: true, cooldowns: true, guildRanks: true, cosmetics: true, events: true },
+    ...(next.update50 || {})
+  };
+  next.directMessages = Array.isArray(next.directMessages) ? next.directMessages.slice(0, 80) : [];
+  next.reports = Array.isArray(next.reports) ? next.reports.slice(0, 60) : [];
+  next.eventHistory = Array.isArray(next.eventHistory) ? next.eventHistory.slice(0, 60) : [];
+  next.playerProfile = {
+    bio: "Ready for war.",
+    avatar: "⚔️",
+    visible: true,
+    ...(next.playerProfile || {})
+  };
+  next.marketRules = {
+    minPrice: 10,
+    maxPrice: 500000,
+    taxPercent: 5,
+    maxListings: 20,
+    ...(next.marketRules || {})
+  };
+  next.pvpCooldowns = next.pvpCooldowns && typeof next.pvpCooldowns === "object" ? next.pvpCooldowns : {};
   next.daily = normalizeDaily(next.daily);
   next.mail = Array.isArray(next.mail) ? next.mail.filter(Boolean).slice(0, 80) : [];
   next.guild = { id: null, name: null, tag: null, role: null, ...(next.guild || {}) };
@@ -1446,7 +1474,7 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 40 · Live RPG Bundle</div>
+        <div className="badge">Update 50 · Beta Launch Pack</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{getTitleData(game).emoji} {game.playerName} · {getProgressionLabel(game)} · {game.className} · {getTitleData(game).label}</p>
       </div>
@@ -1946,6 +1974,7 @@ function Dungeon({ game, setGame }) {
   const [mana, setMana] = useState(heroStats.mana);
   const [log, setLog] = useState([`You joined ${selectedZone.name}.`]);
   const [busy, setBusy] = useState(false);
+  const [battleSpeed, setBattleSpeed] = useState(1);
 
   useEffect(() => {
     setHeroHp(heroStats.hp);
@@ -2028,6 +2057,11 @@ function Dungeon({ game, setGame }) {
     if (defeatedEnemy.isBoss) addLog(`Boss defeated: ${defeatedEnemy.name}. The zone is marked as progress.`);
     if (dropped?.soldBecauseFull) addLog(`Inventory was full. ${dropped.name} was converted into ${dropped.value} gold.`);
     else if (dropped) addLog(`Dungeon drop: ${SLOTS[dropped.slot].emoji} ${dropped.name} (${dropped.rarity}).`);
+    const nextEnemy = createWorldEnemy(zone, getProgressionLevel(normalizeGame(game)), false);
+    setEnemy(nextEnemy);
+    setHeroHp(heroStats.hp);
+    setMana(heroStats.mana);
+    addLog(`Next monster is ready in ${zone.name}.`);
     setBusy(false);
   }
 
@@ -2039,6 +2073,10 @@ function Dungeon({ game, setGame }) {
       return next;
     });
     addLog("You were defeated in the dungeon. Energy was consumed.");
+    const zone = getZone(selectedZoneId);
+    setEnemy(createWorldEnemy(zone, getProgressionLevel(normalizeGame(game)), false));
+    setHeroHp(heroStats.hp);
+    setMana(heroStats.mana);
     setBusy(false);
   }
 
@@ -2143,6 +2181,7 @@ function Dungeon({ game, setGame }) {
           <div className="dungeon-actions">
             <button onClick={() => startFight(false)}>Monster</button>
             <button className="primary" onClick={() => startFight(true)}>Boss</button>
+            <button onClick={() => setBattleSpeed((value) => value >= 3 ? 1 : value + 1)}>Speed x{battleSpeed}</button>
           </div>
         </div>
 
@@ -4736,6 +4775,197 @@ function PerformancePanel({ game, setGame }) {
   );
 }
 
+
+function Update41To50Panel({ game, setGame, session, isAdmin }) {
+  const [profileStatus, setProfileStatus] = useState("Ready.");
+  const [dmText, setDmText] = useState("");
+  const [eventStatus, setEventStatus] = useState("No event started from this panel yet.");
+  const [balanceStatus, setBalanceStatus] = useState("Balance tools loaded.");
+  const cooldownTargets = Object.keys(game.pvpCooldowns || {}).length;
+  const tax = game.marketRules?.taxPercent ?? 5;
+
+  function saveProfilePatch(patch) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.playerProfile = { ...next.playerProfile, ...patch };
+      addMail(next, "Profile updated", "Your public profile settings were updated.", "system");
+      return next;
+    });
+    setProfileStatus("Profile saved locally and will sync with your next cloud save.");
+  }
+
+  function sendTestMessage() {
+    if (!dmText.trim()) {
+      setProfileStatus("Write a message first.");
+      return;
+    }
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.directMessages.unshift({ id: uid(), from: next.playerName, to: "Beta Test", text: dmText.trim().slice(0, 240), at: new Date().toISOString(), read: false });
+      addMail(next, "Direct message saved", "A sample direct message was added to your local mailbox.", "social");
+      return next;
+    });
+    setDmText("");
+    setProfileStatus("Direct message sample saved.");
+  }
+
+  function startEvent(eventName) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.eventHistory.unshift({ id: uid(), eventName, startedAt: new Date().toISOString(), by: next.playerName });
+      next.eventHistory = next.eventHistory.slice(0, 60);
+      addMail(next, "Event started", `${eventName} is now listed in your event history.`, "event");
+      return next;
+    });
+    setEventStatus(`${eventName} prepared. Use Admin+ / Supabase for full live scheduling.`);
+  }
+
+  function applySaferMarketRules() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.marketRules = { minPrice: 25, maxPrice: 250000, taxPercent: 5, maxListings: 20 };
+      next.update50.marketplaceTax = 5;
+      addMail(next, "Marketplace rules updated", "Marketplace tax and listing limits were refreshed.", "market");
+      return next;
+    });
+    setBalanceStatus("Marketplace rules applied: min 25, max 250000, tax 5%, max 20 listings.");
+  }
+
+  function enableBetaProfile() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update50.activeTitle = "Beta Founder";
+      next.playerProfile.visible = true;
+      next.playerProfile.avatar = next.playerProfile.avatar || "⚔️";
+      next.settings.compactMode = Boolean(next.settings.compactMode);
+      addMail(next, "Beta Launch Pack", "Your account is ready for the Update 50 beta flow.", "system");
+      return next;
+    });
+    setProfileStatus("Beta profile enabled.");
+  }
+
+  return (
+    <section className="grid two update50-layout">
+      <div className="panel update-card-highlight">
+        <div className="badge">Update 41 · Player Profile</div>
+        <h2>Public Player Profile</h2>
+        <p>Cleaner profile cards for Arena, guilds and leaderboard interactions.</p>
+        <div className="visual-stats-grid">
+          <div><b>Avatar</b><span>{game.playerProfile?.avatar || "⚔️"}</span></div>
+          <div><b>Visible</b><span>{game.playerProfile?.visible ? "Yes" : "No"}</span></div>
+          <div><b>Title</b><span>{game.update50?.activeTitle || "Beta Founder"}</span></div>
+        </div>
+        <div className="actions stacked-actions">
+          <button onClick={() => saveProfilePatch({ avatar: "🛡️", bio: "City defender." })}>Use Defender Profile</button>
+          <button onClick={() => saveProfilePatch({ avatar: "🐉", bio: "World Boss hunter." })}>Use Dragon Hunter Profile</button>
+          <button className="primary" onClick={enableBetaProfile}>Enable Beta Profile</button>
+        </div>
+        <div className="notice">{profileStatus}</div>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 42 · Direct Messages</div>
+        <h2>Mail + Direct Messages</h2>
+        <p>Starter direct-message flow. Real player-to-player delivery can be connected to Supabase after beta testing.</p>
+        <textarea value={dmText} onChange={(e) => setDmText(e.target.value)} maxLength={240} placeholder="Write a short test message..." />
+        <button className="primary big" onClick={sendTestMessage}>Save test DM</button>
+        <small>{game.directMessages?.length || 0} direct messages stored in your save.</small>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 43 · Guild Ranks</div>
+        <h2>Guild Rank System</h2>
+        <p>Guild roles are prepared for leader, officer and member permissions.</p>
+        <div className="level-rules">
+          <div><b>Leader</b><span>Manage war, invites, ranks and guild tech.</span></div>
+          <div><b>Officer</b><span>Invite players and coordinate wars.</span></div>
+          <div><b>Member</b><span>Fight, donate and request alliance help.</span></div>
+          <div><b>Your role</b><span>{game.guild?.role || "No guild role yet"}</span></div>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 44 · City Skins</div>
+        <h2>Cosmetic City Skins</h2>
+        <p>Cosmetics change presentation, not power.</p>
+        <div className="zone-grid compact-zone-grid">
+          {["Royal Citadel", "Infernal Fortress", "Crystal Kingdom"].map((skin) => (
+            <button key={skin} className={game.update50?.citySkin === skin ? "zone-card active" : "zone-card"} onClick={() => setGame((prev) => { const next = normalizeGame(prev); next.update50.citySkin = skin; return next; })}>
+              <div className="zone-emoji">{skin.includes("Infernal") ? "🔥" : skin.includes("Crystal") ? "🔮" : "🏰"}</div>
+              <div><h3>{skin}</h3><p>Visual skin for the city map.</p></div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 45 · Event Scheduler</div>
+        <h2>Event Scheduler</h2>
+        <p>Prepare live events like Double XP Weekend, Dragon Hunt and Marketplace Festival.</p>
+        <div className="actions stacked-actions">
+          <button onClick={() => startEvent("Double XP Weekend")}>Prepare Double XP Weekend</button>
+          <button onClick={() => startEvent("Dragon Hunt")}>Prepare Dragon Hunt</button>
+          <button onClick={() => startEvent("Marketplace Festival")}>Prepare Marketplace Festival</button>
+        </div>
+        <div className="notice">{eventStatus}</div>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 46 · Server Combat</div>
+        <h2>Server-side Combat Prep</h2>
+        <p>Critical PvP/raid rules are summarized and ready to move deeper into Supabase RPC checks.</p>
+        <ul className="checklist">
+          <li>✅ Same-alliance city attacks blocked</li>
+          <li>✅ Shield prevents city attacks</li>
+          <li>✅ S-Coins cannot be stolen</li>
+          <li>✅ Raid results are reported through inbox</li>
+          <li>✅ PvP cooldown target count: {cooldownTargets}</li>
+        </ul>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 47 · Performance</div>
+        <h2>Performance Cleanup</h2>
+        <p>Save trimming, cache tools and PWA checks stay available under Optimize/Security.</p>
+        <div className="visual-stats-grid">
+          <div><b>Save version</b><span>{game.version}</span></div>
+          <div><b>Inventory cap</b><span>{game.inventory?.length || 0}/80</span></div>
+          <div><b>Mail cap</b><span>{game.mail?.length || 0}/80</span></div>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 48 · S-Coin Workflow</div>
+        <h2>Payment Request Workflow</h2>
+        <p>S-Coins remain manual/admin-controlled. Requests are kept in the Requests panel, while admin grants are logged in Security.</p>
+        <div className="level-rules"><div><b>Current S-Coins</b><span>{game.resources.sCoins}</span></div><div><b>Admin only</b><span>Use Security/Admin tools to grant S-Coins.</span></div></div>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 49 · Public Landing</div>
+        <h2>Public Landing Page Prep</h2>
+        <p>The game is ready for a pre-login landing section with class previews, screenshots, features and call-to-action buttons.</p>
+        <div className="notice">Landing flag: {game.update50?.publicLandingEnabled ? "enabled" : "disabled"}</div>
+      </div>
+
+      <div className="panel update-card-highlight">
+        <div className="badge">Update 50 · Beta Launch Pack</div>
+        <h2>Beta Launch Checklist</h2>
+        <p>This is the main release badge that now appears in the top bar.</p>
+        <ul className="checklist">
+          <li>✅ Update badge visible: Update 50 · Beta Launch Pack</li>
+          <li>✅ Update 16 · City Raid System referenced in release notes</li>
+          <li>✅ World/Dungeon attack freeze fixed</li>
+          <li>✅ Player profile and PvP cooldown prep</li>
+          <li>✅ Marketplace rules and chat moderation prep</li>
+        </ul>
+        <button className="primary big" onClick={applySaferMarketRules}>Apply safer marketplace rules</button>
+        <div className="notice">Tax {tax}% · {balanceStatus}</div>
+      </div>
+    </section>
+  );
+}
+
 function Game({ session }) {
   const [game, setGame] = useState(null);
   const [tab, setTab] = useState("city");
@@ -4888,6 +5118,7 @@ function Game({ session }) {
         <button className={tab === "coinRequests" ? "active" : ""} onClick={() => setTab("coinRequests")}>🪙 Requests</button>
         <button className={tab === "sound" ? "active" : ""} onClick={() => setTab("sound")}>🔊 Sound</button>
         <button className={tab === "performance" ? "active" : ""} onClick={() => setTab("performance")}>🚀 Optimize</button>
+        <button className={tab === "update50" ? "active" : ""} onClick={() => setTab("update50")}>🏁 Update 50</button>
         {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
         {isAdmin && <button className={tab === "adminPlus" ? "active" : ""} onClick={() => setTab("adminPlus")}>📊 Admin+</button>}
         <button className={tab === "security" ? "active" : ""} onClick={() => setTab("security")}>🔒 Security</button>
@@ -4922,6 +5153,7 @@ function Game({ session }) {
       {tab === "coinRequests" && <CoinRequestsPanel game={game} session={session} isAdmin={isAdmin} />}
       {tab === "sound" && <SoundSettingsPanel game={game} setGame={setGame} />}
       {tab === "performance" && <PerformancePanel game={game} setGame={setGame} />}
+      {tab === "update50" && <Update41To50Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
       {tab === "admin" && isAdmin && <AdminPanel session={session} />}
       {tab === "adminPlus" && isAdmin && <AdminDashboardPlus session={session} />}
       {tab === "security" && <Update31SecurityPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}

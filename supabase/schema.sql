@@ -1666,3 +1666,118 @@ end;
 $$;
 
 grant execute on function public.admin_dashboard_summary() to authenticated;
+
+-- S-Fleet Fantasy War ⚔️ — Update 41-50 Bundle
+-- Player profiles, direct messages, moderation scaffolding, event scheduler and beta launch metadata.
+
+create table if not exists public.player_direct_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references auth.users(id) on delete cascade,
+  receiver_id uuid not null references auth.users(id) on delete cascade,
+  sender_name text not null default 'Hero',
+  receiver_name text not null default 'Hero',
+  message text not null check (char_length(message) between 1 and 500),
+  is_read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table public.player_direct_messages enable row level security;
+
+drop policy if exists "Players can read own direct messages" on public.player_direct_messages;
+create policy "Players can read own direct messages"
+on public.player_direct_messages
+for select
+to authenticated
+using (sender_id = auth.uid() or receiver_id = auth.uid() or public.is_current_user_admin());
+
+drop policy if exists "Players can send direct messages" on public.player_direct_messages;
+create policy "Players can send direct messages"
+on public.player_direct_messages
+for insert
+to authenticated
+with check (sender_id = auth.uid());
+
+create index if not exists player_dm_receiver_created_idx on public.player_direct_messages(receiver_id, created_at desc);
+create index if not exists player_dm_sender_created_idx on public.player_direct_messages(sender_id, created_at desc);
+grant select, insert, update on public.player_direct_messages to authenticated;
+
+create table if not exists public.player_reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid not null references auth.users(id) on delete cascade,
+  target_id uuid references auth.users(id) on delete set null,
+  reason text not null default '',
+  details text not null default '',
+  status text not null default 'open' check (status in ('open','reviewed','dismissed','actioned')),
+  created_at timestamptz not null default now()
+);
+
+alter table public.player_reports enable row level security;
+
+drop policy if exists "Players can create reports" on public.player_reports;
+create policy "Players can create reports"
+on public.player_reports
+for insert
+to authenticated
+with check (reporter_id = auth.uid());
+
+drop policy if exists "Admins can read reports" on public.player_reports;
+create policy "Admins can read reports"
+on public.player_reports
+for select
+to authenticated
+using (public.is_current_user_admin() or reporter_id = auth.uid());
+
+grant select, insert, update on public.player_reports to authenticated;
+
+create table if not exists public.game_events (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text not null default '',
+  starts_at timestamptz not null default now(),
+  ends_at timestamptz not null default now() + interval '24 hours',
+  config jsonb not null default '{}'::jsonb,
+  created_by text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.game_events enable row level security;
+
+drop policy if exists "Players can read game events" on public.game_events;
+create policy "Players can read game events"
+on public.game_events
+for select
+to authenticated
+using (true);
+
+drop policy if exists "Admins can manage game events" on public.game_events;
+create policy "Admins can manage game events"
+on public.game_events
+for all
+to authenticated
+using (public.is_current_user_admin())
+with check (public.is_current_user_admin());
+
+grant select, insert, update, delete on public.game_events to authenticated;
+
+create or replace function public.beta_launch_summary()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return jsonb_build_object(
+    'currentUpdate', 'Update 50 · Beta Launch Pack',
+    'previousMilestones', jsonb_build_array(
+      'Update 16 · City Raid System',
+      'Update 31 · Security + Balance + Admin Logs',
+      'Update 40 · Live RPG Bundle'
+    ),
+    'players', (select count(*) from public.game_saves),
+    'activeMarketplaceListings', (select count(*) from public.marketplace_listings where status = 'active'),
+    'activeEvents', (select count(*) from public.game_events where now() between starts_at and ends_at)
+  );
+end;
+$$;
+
+grant execute on function public.beta_launch_summary() to authenticated;

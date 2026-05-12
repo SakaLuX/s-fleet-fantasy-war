@@ -1,103 +1,83 @@
-# S-Fleet Fantasy War ⚔️ — Mega Update 32–40
+# S-Fleet Fantasy War ⚔️ — Update 41–50 Bundle
 
-This bundle is built on Update 31 and keeps existing saves compatible.
+This bundle is based on Update 40 and includes the requested beta-launch features plus the World/Dungeon attack fix.
 
-## Build status
+## Critical fixes
 
-Verified with:
-
-```txt
-npm run build
-```
-
-Build passes. Vite may show a bundle-size warning because the game is now large; it is not a deploy-blocking error.
+- Fixed World/Dungeon battle freeze after first attack.
+  - Cause: World/Dungeon combat referenced battle speed without defining it inside that component.
+  - Fix: local battle speed state added and the fight now resets a new monster after victory/defeat.
+- Added visible release badge in the game top bar:
+  - `Update 50 · Beta Launch Pack`
+- Added release checklist mentioning:
+  - `Update 16 · City Raid System`
 
 ## Included updates
 
-### Update 32 — Real Graphics Pack + Better City / World Visuals
-- New **Visuals** tab.
-- Better fantasy city scene.
-- Better world region cards.
-- City defense / attack visual summary.
+### Update 41 — Player Profile + PvP Cooldown Prep
+- Public profile fields
+- Avatar/bio/title prep
+- PvP cooldown storage prep
+- Cleaner player profile surface
 
-### Update 33 — Multiplayer Chat + Guild Chat
-- New **Chat** tab.
-- Global chat.
-- Guild chat for alliance members.
-- Lightweight polling refresh.
+### Update 42 — Real Mail + Direct Messages Prep
+- Direct message storage in save
+- Supabase table for player direct messages
 
-### Update 34 — Real-time-like Notifications
-- New **Alerts** tab.
-- Notification bar for unread mail, daily reward, empty energy and shield status.
-- Browser notification permission support.
-- Test alert button.
+### Update 43 — Guild Rank System + Permissions Prep
+- Leader / Officer / Member role model
+- Guild permission text and prep
 
-### Update 35 — Better Admin Dashboard
-- New **Admin+** tab for admin accounts.
-- Top players summary.
-- S-Coin request summary.
-- Admin/security log preview.
+### Update 44 — City Skin / Cosmetic System
+- Cosmetic city skin selection
+- No power advantage from skins
 
-### Update 36 — S-Coin Request / Manual Payment Panel
-- New **Requests** tab.
-- Players can request S-Coins.
-- Creator/admin approves or rejects manually.
-- Approval grants S-Coins server-side using `admin_grant_resource`.
+### Update 45 — Event Scheduler
+- Event history in save
+- Supabase `game_events` table for live scheduling
 
-### Update 37 — Real Tutorial Flow
-- New **Guide** tab.
-- Step-by-step onboarding path.
-- One-time beginner reward.
+### Update 46 — Server-side Combat Prep
+- Server rule checklist for raids/PvP
+- Same-alliance attack protection maintained
+- Shield and S-Coin theft protection maintained
 
-### Update 38 — Sound Effects + Accessibility
-- New **Sound** tab.
-- Optional UI/battle/reward sounds.
-- Reduced motion toggle.
-- Compact UI mode.
+### Update 47 — Performance Cleanup
+- Save trimming and PWA/cache tools retained
+- Update 50 panel includes performance summary
 
-### Update 39 — Better Combat Animations
-- Combat animation direction/demo added in Sound/Combat Animation Lab.
-- CSS animation layer for battle feedback.
+### Update 48 — S-Coin Request / Manual Payment Workflow
+- S-Coin request flow remains manual/admin controlled
+- Admin grants remain logged through Update 31 tools
 
-### Update 40 — Production Optimization
-- New **Optimize** tab.
-- PWA/app cache tools.
-- Save trimming/optimization.
-- Production checklist.
+### Update 49 — Public Landing Page Prep
+- Landing flag and beta-ready profile prep
 
-## Required SQL
+### Update 50 — Beta Launch Pack
+- Release badge
+- Beta launch checklist
+- Marketplace rules helper
+- World/Dungeon attack fix
 
-Run the updated SQL file in Supabase:
+## Supabase
+
+Run the new SQL if you want Update 41–50 server tables:
 
 ```txt
-supabase/schema.sql
-```
-
-Supabase path:
-
-```txt
-Supabase
-→ SQL Editor
-→ New query
-→ paste all from supabase/schema.sql
-→ Run
+Supabase → SQL Editor → New query → paste supabase/schema.sql → Run
 ```
 
 This adds:
 
-```txt
-game_chat_messages
-s_coin_requests
-admin_dashboard_summary()
-```
-
-It also keeps previous SQL from Update 31.
+- `player_direct_messages`
+- `player_reports`
+- `game_events`
+- `beta_launch_summary()`
 
 ## Deploy
 
-Upload these files to GitHub and replace the old project files.
+Upload all files to GitHub and commit. Netlify will deploy automatically.
 
-Netlify settings remain:
+Netlify settings stay the same:
 
 ```txt
 Build command: npm run build
