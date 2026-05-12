@@ -1,30 +1,43 @@
-# S-Fleet Fantasy War ⚔️ — Update 5
+# S-Fleet Fantasy War ⚔️ — Update 6
 
-Update 5 adaugă modificările de economie și limite pentru oraș.
+Update 6 adaugă progresie avansată și companion systems:
 
-## Ce este nou
-
-- clădire nouă **Wood Collector** pentru producția de lemn;
-- **Citadel** are maxim **level 50**;
-- **Citadel** controlează nivelul maxim al celorlalte clădiri;
-- celelalte clădiri pot crește în continuare, dar niciodată peste nivelul Citadel;
-- exemplu: dacă Citadel este level 3, restul clădirilor pot urca doar până la level 3;
-- exemplu: dacă Citadel este level 25, restul clădirilor pot urca până la level 25;
-- producția pe oră include acum Wood Collector;
-- progresul salvat rămâne compatibil cu jucătorii existenți.
+- Hero max level: **100**
+- După level 100, progresia continuă ca **Paragon Level**, până la **Paragon 250**
+- Energia pornește de la **10** și crește cu **+1** pe fiecare level/paragon
+- Tab nou: **🐴 Companions**
+- Mount-uri cu bonusuri de HP, Attack, Defense, Mana, Energy și Power
+- Mount gratuit de început: **Brown Horse**
+- Mount-uri unlockabile: **War Wolf**, **Crystal Stag**, **Dragon Whelp**
+- Paladin Companion:
+  - **Protejează orașul**: bonus la producția/oră și city power
+  - **Ajută în lupte**: adaugă stats și lovește inamicul în combat
+- Paladinul poate fi antrenat până la level 100
+- Compatibil cu salvările existente
 
 ## Supabase
 
-Nu trebuie să modifici Supabase. Wood Collector se adaugă automat în salvarea JSON existentă.
+Nu trebuie modificată tabela Supabase. Totul se salvează în același câmp JSONB `data` din `game_saves`.
 
-## Upload pe GitHub
+## Cum faci update pe GitHub
 
-1. Descarcă ZIP-ul.
+1. Descarcă ZIP-ul Update 6.
 2. Dezarhivează-l.
-3. Intră în repository-ul tău `s-fleet-fantasy-war`.
-4. Upload/înlocuiește toate fișierele cu cele din acest pachet.
-5. Apasă **Commit changes**.
-6. Netlify va face deploy automat.
+3. Intră în repository-ul GitHub `s-fleet-fantasy-war`.
+4. Apasă **Add file → Upload files**.
+5. Încarcă toate fișierele/folderele din pachet.
+6. Apasă **Commit changes**.
+7. Netlify va porni deploy automat.
+
+## Dacă Netlify nu pornește automat
+
+```txt
+Netlify
+→ site-ul tău
+→ Deploys
+→ Trigger deploy
+→ Deploy site
+```
 
 ## Build settings Netlify
 
@@ -35,11 +48,11 @@ Base directory: gol
 Functions directory: gol
 ```
 
-## Environment variables
-
-Rămân aceleași:
+## Environment variables rămân aceleași
 
 ```txt
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
 ```
+
+Nu pune parola bazei de date, nu pune `service_role`, nu pune `secret key`.

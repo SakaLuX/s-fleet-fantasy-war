@@ -6,8 +6,10 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const hasSupabase = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const MAX_CITADEL_LEVEL = 50;
+const MAX_HERO_LEVEL = 100;
+const MAX_PARAGON_LEVEL = 250;
 
-const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v6";
+const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v7";
 
 const CLASSES = {
   Knight: {
@@ -162,6 +164,37 @@ const ITEM_NAMES = {
   amulet: ["Amulet of Life", "Mana Charm", "Sun Pendant", "Moon Relic", "Ancient Talisman"]
 };
 
+const MOUNTS = {
+  brown_horse: {
+    name: "Brown Horse",
+    emoji: "🐴",
+    description: "Mount de început pentru drumuri rapide între dungeon-uri.",
+    cost: { gold: 0, wood: 0, crystals: 0 },
+    bonus: { hp: 20, attack: 2, defense: 1, mana: 0, energy: 1, power: 90 }
+  },
+  war_wolf: {
+    name: "War Wolf",
+    emoji: "🐺",
+    description: "Mount agresiv, bun pentru atac și dungeon farming.",
+    cost: { gold: 1200, wood: 450, crystals: 80 },
+    bonus: { hp: 45, attack: 7, defense: 3, mana: 0, energy: 3, power: 260 }
+  },
+  crystal_stag: {
+    name: "Crystal Stag",
+    emoji: "🦌",
+    description: "Mount magic, crește mana și energia maximă.",
+    cost: { gold: 2200, wood: 650, crystals: 160 },
+    bonus: { hp: 55, attack: 4, defense: 4, mana: 40, energy: 5, power: 430 }
+  },
+  dragon_whelp: {
+    name: "Dragon Whelp",
+    emoji: "🐉",
+    description: "Mount rar cu bonus mare de power, attack și survivability.",
+    cost: { gold: 5200, wood: 1300, crystals: 420 },
+    bonus: { hp: 120, attack: 14, defense: 8, mana: 60, energy: 8, power: 980 }
+  }
+};
+
 const QUESTS = [
   {
     id: "first_blood",
@@ -199,6 +232,20 @@ const QUESTS = [
     check: (game) => (game.stats.bossKills || 0) >= 1
   },
   {
+    id: "first_mount",
+    title: "Mounted Hero",
+    text: "Echipează primul mount.",
+    reward: { gold: 260, wood: 120, crystals: 30, xp: 120 },
+    check: (game) => Boolean(game.mounts?.active)
+  },
+  {
+    id: "paladin_guard",
+    title: "City Protector",
+    text: "Setează Paladinul să protejeze orașul.",
+    reward: { gold: 260, wood: 150, crystals: 35, xp: 130 },
+    check: (game) => game.paladin?.mode === "city"
+  },
+  {
     id: "veteran",
     title: "Arena Veteran",
     text: "Câștigă 5 lupte.",
@@ -209,13 +256,14 @@ const QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 6,
+    version: 7,
     playerName,
     className,
     level: 1,
+    paragonLevel: 0,
     xp: 0,
     xpToNext: 100,
-    resources: { gold: 350, wood: 220, crystals: 45, energy: 12 },
+    resources: { gold: 350, wood: 220, crystals: 45, energy: 10 },
     city: { lastResourceCollectionAt: null },
     classLocked: true,
     buildings: {
@@ -227,6 +275,8 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
     },
     inventory: [],
     equipment: { weapon: null, armor: null, ring: null, amulet: null },
+    mounts: { owned: ["brown_horse"], active: "brown_horse" },
+    paladin: { level: 1, xp: 0, xpToNext: 100, mode: "city" },
     stats: { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0 },
     completedQuests: [],
     world: { selectedZoneId: "goblin_forest", completedBosses: [], clears: {} },
@@ -241,19 +291,31 @@ function clone(value) {
 function normalizeGame(game) {
   if (!game) return null;
   const next = clone(game);
-  next.version = 6;
-  next.resources = { gold: 0, wood: 0, crystals: 0, energy: 0, ...(next.resources || {}) };
+  next.version = 7;
+  next.resources = { gold: 0, wood: 0, crystals: 0, energy: 10, ...(next.resources || {}) };
   next.city = { lastResourceCollectionAt: null, ...(next.city || {}) };
+  next.level = Math.max(1, Math.min(MAX_HERO_LEVEL, next.level || 1));
+  next.paragonLevel = Math.max(0, Math.min(MAX_PARAGON_LEVEL, next.paragonLevel || 0));
+  if (next.level < MAX_HERO_LEVEL) next.paragonLevel = 0;
   next.classLocked = true;
   next.buildings = {
     citadel: { level: 1 },
     barracks: { level: 1 },
     mine: { level: 1 },
+    lumber: { level: 1 },
     academy: { level: 1 },
     ...(next.buildings || {})
   };
   next.inventory = Array.isArray(next.inventory) ? next.inventory : [];
   next.equipment = { weapon: null, armor: null, ring: null, amulet: null, ...(next.equipment || {}) };
+  next.mounts = { owned: ["brown_horse"], active: "brown_horse", ...(next.mounts || {}) };
+  next.mounts.owned = Array.isArray(next.mounts.owned) && next.mounts.owned.length ? next.mounts.owned : ["brown_horse"];
+  if (!next.mounts.active || !next.mounts.owned.includes(next.mounts.active)) next.mounts.active = next.mounts.owned[0];
+  next.paladin = { level: 1, xp: 0, xpToNext: 100, mode: "city", ...(next.paladin || {}) };
+  next.paladin.level = Math.max(1, Math.min(100, next.paladin.level || 1));
+  next.paladin.xp = Math.max(0, next.paladin.xp || 0);
+  next.paladin.xpToNext = Math.max(80, next.paladin.xpToNext || 100);
+  next.paladin.mode = next.paladin.mode === "battle" ? "battle" : "city";
   next.stats = { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, ...(next.stats || {}) };
   next.completedQuests = Array.isArray(next.completedQuests) ? next.completedQuests : [];
   next.world = { selectedZoneId: "goblin_forest", completedBosses: [], clears: {}, ...(next.world || {}) };
@@ -345,38 +407,90 @@ function equipmentBonus(game) {
   return bonus;
 }
 
+function getProgressionLevel(game) {
+  return (game.level || 1) + (game.paragonLevel || 0);
+}
+
+function getProgressionLabel(game) {
+  if ((game.level || 1) >= MAX_HERO_LEVEL) {
+    return `Level ${MAX_HERO_LEVEL} · Paragon ${game.paragonLevel || 0}`;
+  }
+  return `Level ${game.level || 1}`;
+}
+
+function getXpLabel(game) {
+  if ((game.level || 1) >= MAX_HERO_LEVEL && (game.paragonLevel || 0) >= MAX_PARAGON_LEVEL) return "Max Paragon";
+  if ((game.level || 1) >= MAX_HERO_LEVEL) return "Paragon XP";
+  return "XP";
+}
+
+function getMountBonus(game) {
+  const mount = MOUNTS[game.mounts?.active];
+  return mount?.bonus || { hp: 0, attack: 0, defense: 0, mana: 0, energy: 0, power: 0 };
+}
+
+function getPaladinBattleBonus(game) {
+  const paladin = game.paladin || { level: 1, mode: "city" };
+  if (paladin.mode !== "battle") return { hp: 0, attack: 0, defense: 0, mana: 0, power: 0, damage: 0 };
+  return {
+    hp: 18 + paladin.level * 6,
+    attack: 2 + Math.floor(paladin.level * 1.4),
+    defense: 1 + Math.floor(paladin.level * 0.8),
+    mana: 0,
+    power: 80 + paladin.level * 22,
+    damage: 6 + Math.floor(paladin.level * 2.2)
+  };
+}
+
+function getPaladinCityBonus(game) {
+  const paladin = game.paladin || { level: 1, mode: "city" };
+  if (paladin.mode !== "city") return { gold: 0, wood: 0, crystals: 0, defensePower: 0 };
+  return {
+    gold: 20 + paladin.level * 8,
+    wood: 18 + paladin.level * 7,
+    crystals: 2 + Math.floor(paladin.level / 3),
+    defensePower: 100 + paladin.level * 35
+  };
+}
+
 function getHeroStats(game) {
   const base = CLASSES[game.className].base;
   const b = game.buildings;
   const levelBonus = game.level - 1;
   const gear = equipmentBonus(game);
+  const mount = getMountBonus(game);
+  const paladin = getPaladinBattleBonus(game);
+  const progression = getProgressionLevel(game);
 
-  const hp = base.hp + levelBonus * 18 + b.citadel.level * 12 + gear.hp;
-  const attack = base.attack + levelBonus * 4 + b.barracks.level * 3 + gear.attack;
-  const defense = base.defense + levelBonus * 2 + b.citadel.level * 2 + gear.defense;
-  const mana = base.mana + levelBonus * 7 + b.academy.level * 8 + gear.mana;
+  const hp = base.hp + levelBonus * 18 + (game.paragonLevel || 0) * 6 + b.citadel.level * 12 + gear.hp + mount.hp + paladin.hp;
+  const attack = base.attack + levelBonus * 4 + (game.paragonLevel || 0) * 1 + b.barracks.level * 3 + gear.attack + mount.attack + paladin.attack;
+  const defense = base.defense + levelBonus * 2 + Math.floor((game.paragonLevel || 0) * 0.7) + b.citadel.level * 2 + gear.defense + mount.defense + paladin.defense;
+  const mana = base.mana + levelBonus * 7 + (game.paragonLevel || 0) * 2 + b.academy.level * 8 + gear.mana + mount.mana + paladin.mana;
   const power =
     100 +
-    game.level * 45 +
+    progression * 45 +
     b.citadel.level * 35 +
     b.barracks.level * 35 +
     b.academy.level * 25 +
     b.mine.level * 15 +
     b.lumber.level * 15 +
-    gear.power;
+    gear.power +
+    mount.power +
+    paladin.power;
 
-  return { hp, attack, defense, mana, power, gear };
+  return { hp, attack, defense, mana, power, gear, mount, paladin };
 }
 
 function getMaxEnergy(game) {
-  return 20 + game.level + game.buildings.citadel.level;
+  return 9 + getProgressionLevel(game) + (getMountBonus(game).energy || 0);
 }
 
 function getHourlyIncome(game) {
+  const paladinCity = getPaladinCityBonus(game);
   return {
-    gold: 80 + game.buildings.mine.level * 35,
-    wood: 45 + game.buildings.lumber.level * 35 + game.buildings.citadel.level * 8,
-    crystals: 5 + game.buildings.academy.level * 3
+    gold: 80 + game.buildings.mine.level * 35 + paladinCity.gold,
+    wood: 45 + game.buildings.lumber.level * 35 + game.buildings.citadel.level * 8 + paladinCity.wood,
+    crystals: 5 + game.buildings.academy.level * 3 + paladinCity.crystals
   };
 }
 
@@ -431,20 +545,43 @@ function applyHourlyCollection(game, now = Date.now()) {
 }
 
 function applyReward(game, reward) {
-  const next = clone(game);
+  const next = normalizeGame(game);
   next.resources.gold += reward.gold || 0;
   next.resources.wood += reward.wood || 0;
   next.resources.crystals += reward.crystals || 0;
   next.xp += reward.xp || 0;
 
   while (next.xp >= next.xpToNext) {
-    next.xp -= next.xpToNext;
-    next.level += 1;
-    next.xpToNext = Math.round(next.xpToNext * 1.35);
-    next.resources.energy = Math.min(getMaxEnergy(next), next.resources.energy + 4);
+    if (next.level < MAX_HERO_LEVEL) {
+      next.xp -= next.xpToNext;
+      next.level += 1;
+      next.xpToNext = next.level >= MAX_HERO_LEVEL ? 1400 : Math.round(next.xpToNext * 1.28);
+      next.resources.energy = Math.min(getMaxEnergy(next), next.resources.energy + 1);
+    } else if (next.paragonLevel < MAX_PARAGON_LEVEL) {
+      next.xp -= next.xpToNext;
+      next.paragonLevel += 1;
+      next.xpToNext = Math.round(1400 + next.paragonLevel * 220);
+      next.resources.energy = Math.min(getMaxEnergy(next), next.resources.energy + 1);
+    } else {
+      next.xp = 0;
+      break;
+    }
   }
 
   next.resources.energy = Math.min(next.resources.energy, getMaxEnergy(next));
+  return next;
+}
+
+function addPaladinXp(game, amount) {
+  const next = normalizeGame(game);
+  const paladin = next.paladin;
+  paladin.xp += amount;
+  while (paladin.xp >= paladin.xpToNext && paladin.level < 100) {
+    paladin.xp -= paladin.xpToNext;
+    paladin.level += 1;
+    paladin.xpToNext = Math.round(paladin.xpToNext * 1.22);
+  }
+  if (paladin.level >= 100) paladin.xp = Math.min(paladin.xp, paladin.xpToNext);
   return next;
 }
 
@@ -635,7 +772,7 @@ function Onboarding({ onStart }) {
           <div className="panel kingdom-preview">
             <div className="big-emoji">🏰</div>
             <h2>Obiectiv MVP</h2>
-            <p>Construiești orașul, ridici eroul, lupți cu monștri, primești iteme și echipezi eroul.</p>
+            <p>Construiești orașul, ridici eroul până la Paragon, alegi mount-uri și folosești Paladinul.</p>
           </div>
         </div>
       </section>
@@ -648,9 +785,9 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 4 · Hourly Kingdom</div>
+        <div className="badge">Update 6 · Paragon / Mounts / Paladin</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
-        <p>{game.playerName} · Level {game.level} · {game.className}</p>
+        <p>{game.playerName} · {getProgressionLabel(game)} · {game.className}</p>
       </div>
 
       <div className="top-actions">
@@ -722,7 +859,7 @@ function City({ game, setGame }) {
       <div className="section-title">
         <div>
           <h2>Orașul tău</h2>
-          <p>Colectarea merge o singură dată pe oră. Citadel poate ajunge la level 50, iar celelalte clădiri pot crește doar până la nivelul Citadel.</p>
+          <p>Colectarea merge o singură dată pe oră. Paladinul în modul oraș adaugă producție și protecție.</p>
         </div>
         <button className="primary" disabled={!collectionState.ready} onClick={collect}>
           {collectionState.ready ? "Colectează resurse" : `Disponibil în ${formatCountdown(collectionState.remainingMs)}`}
@@ -733,6 +870,7 @@ function City({ game, setGame }) {
         <div><b>Producție / oră</b><span>{hourlyIncome.gold} gold · {hourlyIncome.wood} wood · {hourlyIncome.crystals} crystals</span></div>
         <div><b>Ore pregătite</b><span>{collectionState.ready ? collectionState.hours : 0}h</span></div>
         <div><b>Energie la colectare</b><span>se umple la maxim: {maxEnergy}</span></div>
+        <div><b>Protecție Paladin</b><span>{getPaladinCityBonus(game).defensePower} city power</span></div>
       </div>
 
       <div className="grid four">
@@ -758,7 +896,7 @@ function City({ game, setGame }) {
 
 function Battle({ game, setGame }) {
   const heroStats = useMemo(() => getHeroStats(game), [game]);
-  const [enemy, setEnemy] = useState(() => randomEnemy(game.level));
+  const [enemy, setEnemy] = useState(() => randomEnemy(getProgressionLevel(game)));
   const [heroHp, setHeroHp] = useState(heroStats.hp);
   const [mana, setMana] = useState(heroStats.mana);
   const [log, setLog] = useState(["Un inamic apare lângă citadelă."]);
@@ -774,7 +912,7 @@ function Battle({ game, setGame }) {
   }
 
   function newEnemy() {
-    setEnemy(randomEnemy(game.level));
+    setEnemy(randomEnemy(getProgressionLevel(game)));
     setHeroHp(heroStats.hp);
     setMana(heroStats.mana);
     setLog(["O nouă amenințare se apropie de regat."]);
@@ -790,7 +928,7 @@ function Battle({ game, setGame }) {
       next = applyReward(next, defeatedEnemy.reward);
 
       if (Math.random() < 0.65) {
-        dropped = createItem(next.level, defeatedEnemy.name);
+        dropped = createItem(getProgressionLevel(next), defeatedEnemy.name);
         if (next.inventory.length < 60) {
           next.inventory.push(dropped);
           next.stats.itemsFound += 1;
@@ -800,6 +938,7 @@ function Battle({ game, setGame }) {
         }
       }
 
+      if (next.paladin.mode === "battle") next = addPaladinXp(next, 25);
       return next;
     });
 
@@ -853,6 +992,11 @@ function Battle({ game, setGame }) {
       addLog(`Atac normal: ${damage} damage.`);
     }
 
+    if (heroStats.paladin.damage) {
+      damage += heroStats.paladin.damage;
+      addLog(`Paladinul lovește pentru ${heroStats.paladin.damage} damage.`);
+    }
+
     setBusy(true);
     setMana(nextMana);
 
@@ -882,7 +1026,7 @@ function Battle({ game, setGame }) {
           <div className="combat-card hero">
             <div className="avatar">🧙</div>
             <h3>{game.playerName}</h3>
-            <p>Level {game.level} · {game.className}</p>
+            <p>{getProgressionLabel(game)} · {game.className}</p>
             <Progress label="HP" value={heroHp} max={heroStats.hp} />
             <Progress label="Mana" value={mana} max={heroStats.mana} />
           </div>
@@ -918,7 +1062,7 @@ function Dungeon({ game, setGame }) {
   const [selectedZoneId, setSelectedZoneId] = useState(game.world?.selectedZoneId || "goblin_forest");
   const selectedZone = getZone(selectedZoneId);
   const heroStats = useMemo(() => getHeroStats(game), [game]);
-  const [enemy, setEnemy] = useState(() => createWorldEnemy(selectedZone, game.level, false));
+  const [enemy, setEnemy] = useState(() => createWorldEnemy(selectedZone, getProgressionLevel(game), false));
   const [heroHp, setHeroHp] = useState(heroStats.hp);
   const [mana, setMana] = useState(heroStats.mana);
   const [log, setLog] = useState([`Ai intrat în ${selectedZone.name}.`]);
@@ -931,7 +1075,7 @@ function Dungeon({ game, setGame }) {
 
   useEffect(() => {
     const zone = getZone(selectedZoneId);
-    setEnemy(createWorldEnemy(zone, game.level, false));
+    setEnemy(createWorldEnemy(zone, getProgressionLevel(game), false));
     setHeroHp(heroStats.hp);
     setMana(heroStats.mana);
     setLog([`Ai selectat zona ${zone.name}.`]);
@@ -956,7 +1100,7 @@ function Dungeon({ game, setGame }) {
       addLog(`Ai nevoie de ${zone.energyCost} energie pentru ${zone.name}.`);
       return;
     }
-    setEnemy(createWorldEnemy(zone, game.level, isBoss));
+    setEnemy(createWorldEnemy(zone, getProgressionLevel(game), isBoss));
     setHeroHp(heroStats.hp);
     setMana(heroStats.mana);
     setBusy(false);
@@ -985,7 +1129,7 @@ function Dungeon({ game, setGame }) {
       next = applyReward(next, defeatedEnemy.reward);
 
       if (Math.random() < defeatedEnemy.dropChance) {
-        dropped = createItem(Math.max(next.level, zone.level), defeatedEnemy.name, defeatedEnemy.rarityBoost);
+        dropped = createItem(Math.max(getProgressionLevel(next), zone.level), defeatedEnemy.name, defeatedEnemy.rarityBoost);
         if (next.inventory.length < 60) {
           next.inventory.push(dropped);
           next.stats.itemsFound += 1;
@@ -995,6 +1139,7 @@ function Dungeon({ game, setGame }) {
         }
       }
 
+      if (next.paladin.mode === "battle") next = addPaladinXp(next, defeatedEnemy.isBoss ? 60 : 30);
       return next;
     });
 
@@ -1052,6 +1197,11 @@ function Dungeon({ game, setGame }) {
     } else {
       damage = Math.max(6, Math.round(heroStats.attack - enemy.defense * 0.6 + Math.random() * 11));
       addLog(`Atac normal: ${damage} damage.`);
+    }
+
+    if (heroStats.paladin.damage) {
+      damage += heroStats.paladin.damage;
+      addLog(`Paladinul lovește pentru ${heroStats.paladin.damage} damage.`);
     }
 
     setBusy(true);
@@ -1119,7 +1269,7 @@ function Dungeon({ game, setGame }) {
           <div className="combat-card hero">
             <div className="avatar">🧙</div>
             <h3>{game.playerName}</h3>
-            <p>Level {game.level} · {game.className}</p>
+            <p>{getProgressionLabel(game)} · {game.className}</p>
             <Progress label="HP" value={heroHp} max={heroStats.hp} />
             <Progress label="Mana" value={mana} max={heroStats.mana} />
           </div>
@@ -1280,6 +1430,8 @@ function Inventory({ game, setGame }) {
 function Hero({ game }) {
   const stats = getHeroStats(game);
   const selectedClass = CLASSES[game.className];
+  const xpLabel = getXpLabel(game);
+  const maxed = game.level >= MAX_HERO_LEVEL && (game.paragonLevel || 0) >= MAX_PARAGON_LEVEL;
 
   return (
     <section className="grid two">
@@ -1289,17 +1441,23 @@ function Hero({ game }) {
           <div className="big-emoji">{selectedClass.emoji}</div>
           <div>
             <h3>{game.playerName}</h3>
-            <p>Level {game.level} · {game.className}</p>
+            <p>{getProgressionLabel(game)} · {game.className}</p>
           </div>
         </div>
 
-        <Progress label="XP" value={game.xp} max={game.xpToNext} />
+        <Progress label={xpLabel} value={maxed ? 1 : game.xp} max={maxed ? 1 : game.xpToNext} />
+
+        <div className="level-rules">
+          <div><b>Hero max</b><span>Level {MAX_HERO_LEVEL}</span></div>
+          <div><b>Paragon max</b><span>{MAX_PARAGON_LEVEL}</span></div>
+          <div><b>Energy rule</b><span>10 la level 1, +1 / level sau Paragon</span></div>
+        </div>
 
         <div className="grid two mini-stats">
-          <div>❤️ HP <b>{stats.hp}</b><small>Gear +{stats.gear.hp}</small></div>
-          <div>⚔️ Attack <b>{stats.attack}</b><small>Gear +{stats.gear.attack}</small></div>
-          <div>🛡️ Defense <b>{stats.defense}</b><small>Gear +{stats.gear.defense}</small></div>
-          <div>🔮 Mana <b>{stats.mana}</b><small>Gear +{stats.gear.mana}</small></div>
+          <div>❤️ HP <b>{stats.hp}</b><small>Gear +{stats.gear.hp} · Mount +{stats.mount.hp} · Paladin +{stats.paladin.hp}</small></div>
+          <div>⚔️ Attack <b>{stats.attack}</b><small>Gear +{stats.gear.attack} · Mount +{stats.mount.attack} · Paladin +{stats.paladin.attack}</small></div>
+          <div>🛡️ Defense <b>{stats.defense}</b><small>Gear +{stats.gear.defense} · Mount +{stats.mount.defense} · Paladin +{stats.paladin.defense}</small></div>
+          <div>🔮 Mana <b>{stats.mana}</b><small>Gear +{stats.gear.mana} · Mount +{stats.mount.mana}</small></div>
         </div>
       </div>
 
@@ -1319,6 +1477,126 @@ function Hero({ game }) {
         <div className="notice locked">
           🔒 Pentru altă clasă trebuie creat un erou nou / cont nou.
         </div>
+      </div>
+    </section>
+  );
+}
+
+function Companions({ game, setGame }) {
+  const activeMount = MOUNTS[game.mounts?.active];
+
+  function canPay(cost) {
+    return game.resources.gold >= cost.gold && game.resources.wood >= cost.wood && game.resources.crystals >= cost.crystals;
+  }
+
+  function unlockMount(id) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      if (next.mounts.owned.includes(id)) {
+        next.mounts.active = id;
+        return next;
+      }
+      const mount = MOUNTS[id];
+      if (!canAfford(next.resources, mount.cost)) return next;
+      next.resources.gold -= mount.cost.gold;
+      next.resources.wood -= mount.cost.wood;
+      next.resources.crystals -= mount.cost.crystals;
+      next.mounts.owned.push(id);
+      next.mounts.active = id;
+      next.resources.energy = Math.min(next.resources.energy, getMaxEnergy(next));
+      return next;
+    });
+  }
+
+  function setPaladinMode(mode) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.paladin.mode = mode;
+      return next;
+    });
+  }
+
+  function trainPaladin() {
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      const cost = { gold: 180 + next.paladin.level * 45, wood: 90 + next.paladin.level * 18, crystals: 15 + next.paladin.level * 4 };
+      if (!canAfford(next.resources, cost) || next.paladin.level >= 100) return next;
+      next.resources.gold -= cost.gold;
+      next.resources.wood -= cost.wood;
+      next.resources.crystals -= cost.crystals;
+      next = addPaladinXp(next, next.paladin.xpToNext);
+      return next;
+    });
+  }
+
+  const paladinCost = { gold: 180 + game.paladin.level * 45, wood: 90 + game.paladin.level * 18, crystals: 15 + game.paladin.level * 4 };
+  const cityBonus = getPaladinCityBonus(game);
+  const battleBonus = getPaladinBattleBonus({ ...game, paladin: { ...game.paladin, mode: "battle" } });
+
+  return (
+    <section className="grid companion-layout">
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Mount-uri</h2>
+            <p>Mount-ul activ dă bonusuri la stats, power și energie maximă.</p>
+          </div>
+          <div className="power-summary">{activeMount ? `${activeMount.emoji} ${activeMount.name}` : "Fără mount"}</div>
+        </div>
+
+        <div className="mount-grid">
+          {Object.entries(MOUNTS).map(([id, mount]) => {
+            const owned = game.mounts.owned.includes(id);
+            const active = game.mounts.active === id;
+            const affordable = canPay(mount.cost);
+            return (
+              <article key={id} className={`mount-card ${active ? "active" : ""}`}>
+                <div className="mount-emoji">{mount.emoji}</div>
+                <h3>{mount.name}</h3>
+                <p>{mount.description}</p>
+                <small>HP +{mount.bonus.hp} · ATK +{mount.bonus.attack} · DEF +{mount.bonus.defense} · Mana +{mount.bonus.mana} · Energy +{mount.bonus.energy}</small>
+                <small>Power +{mount.bonus.power}</small>
+                <button disabled={!owned && !affordable} onClick={() => unlockMount(id)}>
+                  {active ? "Activ" : owned ? "Equip" : `Unlock: ${mount.cost.gold} gold · ${mount.cost.wood} wood · ${mount.cost.crystals} crystals`}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Paladin Companion</h2>
+            <p>Îl poți lăsa să protejeze orașul sau îl poți lua în lupte.</p>
+          </div>
+          <div className="power-summary">🛡️ Lv. {game.paladin.level}</div>
+        </div>
+
+        <div className="paladin-card">
+          <div className="big-emoji">🛡️</div>
+          <div>
+            <h3>Royal Paladin</h3>
+            <p>Mod curent: <b>{game.paladin.mode === "city" ? "Protejează orașul" : "Merge în luptă"}</b></p>
+            <Progress label="Paladin XP" value={game.paladin.xp} max={game.paladin.xpToNext} />
+          </div>
+        </div>
+
+        <div className="paladin-modes">
+          <button className={game.paladin.mode === "city" ? "active" : ""} onClick={() => setPaladinMode("city")}>🏰 Protejează orașul</button>
+          <button className={game.paladin.mode === "battle" ? "active" : ""} onClick={() => setPaladinMode("battle")}>⚔️ Ajută în lupte</button>
+        </div>
+
+        <div className="level-rules">
+          <div><b>City mode</b><span>+{cityBonus.gold} gold/oră · +{cityBonus.wood} wood/oră · +{cityBonus.crystals} crystals/oră</span></div>
+          <div><b>Battle mode</b><span>ATK +{battleBonus.attack} · DEF +{battleBonus.defense} · extra hit {battleBonus.damage}</span></div>
+          <div><b>Train cost</b><span>{paladinCost.gold} gold · {paladinCost.wood} wood · {paladinCost.crystals} crystals</span></div>
+        </div>
+
+        <button className="primary big" disabled={!canPay(paladinCost) || game.paladin.level >= 100} onClick={trainPaladin}>
+          {game.paladin.level >= 100 ? "Paladin Max Lv. 100" : "Antrenează Paladinul"}
+        </button>
       </div>
     </section>
   );
@@ -1455,6 +1733,7 @@ function Game({ session }) {
         <button className={tab === "world" ? "active" : ""} onClick={() => setTab("world")}>🗺️ World</button>
         <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>🎒 Inventory</button>
         <button className={tab === "hero" ? "active" : ""} onClick={() => setTab("hero")}>🧙 Erou</button>
+        <button className={tab === "companions" ? "active" : ""} onClick={() => setTab("companions")}>🐴 Companions</button>
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Questuri</button>
         <button className="danger-tab" onClick={resetSave}>Reset progres</button>
       </nav>
@@ -1464,6 +1743,7 @@ function Game({ session }) {
       {tab === "world" && <Dungeon game={game} setGame={setGame} />}
       {tab === "inventory" && <Inventory game={game} setGame={setGame} />}
       {tab === "hero" && <Hero game={game} />}
+      {tab === "companions" && <Companions game={game} setGame={setGame} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>
   );
