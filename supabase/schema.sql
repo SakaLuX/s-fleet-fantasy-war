@@ -2014,7 +2014,7 @@ security definer
 set search_path = public
 as $$
   select jsonb_build_object(
-    'version', 'Update 60 · Beta Launch Polish',
+    'version', 'Update 67 · Beta Testing Tools',
     'players', (select count(*) from public.game_saves),
     'active_events', (select count(*) from public.game_events where now() between starts_at and ends_at),
     'direct_messages', (select count(*) from public.player_direct_messages),
@@ -2027,9 +2027,135 @@ as $$
       'Update 57 · Guild Shop + Guild Research',
       'Update 58 · Event Scheduler',
       'Update 59 · City Scout System',
-      'Update 60 · Beta Launch Polish'
+      'Update 67 · Beta Testing Tools'
     )
   );
 $$;
 
 grant execute on function public.beta_launch_summary() to authenticated;
+
+-- Update 61–67 · UI Cleanup + Beta Testing Tools
+-- Safe to run multiple times. Adds beta testing tables and fixes admin helper functions if missing.
+
+create table if not exists public.admin_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  created_at timestamptz not null default now()
+);
+
+alter table public.admin_users enable row level security;
+
+create or replace function public.is_admin_email(input_email text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.admin_users au
+    where lower(au.email) = lower(coalesce(input_email, ''))
+  );
+$$;
+
+grant execute on function public.is_admin_email(text) to authenticated;
+grant execute on function public.is_admin_email(text) to anon;
+
+insert into public.admin_users(email)
+values ('sakal.hiv@gmail.com')
+on conflict (email) do nothing;
+
+create table if not exists public.beta_test_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  area text not null default 'general',
+  status text not null default 'open',
+  severity text not null default 'medium',
+  title text not null default 'Beta test report',
+  description text not null default '',
+  debug jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.beta_test_reports enable row level security;
+
+drop policy if exists "Players can create beta reports" on public.beta_test_reports;
+create policy "Players can create beta reports"
+on public.beta_test_reports for insert to authenticated
+with check (auth.uid() = user_id);
+
+drop policy if exists "Players can read own beta reports" on public.beta_test_reports;
+create policy "Players can read own beta reports"
+on public.beta_test_reports for select to authenticated
+using (auth.uid() = user_id or public.is_admin_email(auth.email()));
+
+drop policy if exists "Admins can update beta reports" on public.beta_test_reports;
+create policy "Admins can update beta reports"
+on public.beta_test_reports for update to authenticated
+using (public.is_admin_email(auth.email()))
+with check (public.is_admin_email(auth.email()));
+
+create table if not exists public.economy_audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  audit_type text not null default 'update67',
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.economy_audit_logs enable row level security;
+
+drop policy if exists "Admins can read economy audits" on public.economy_audit_logs;
+create policy "Admins can read economy audits"
+on public.economy_audit_logs for select to authenticated
+using (public.is_admin_email(auth.email()));
+
+drop policy if exists "Players can create own economy audits" on public.economy_audit_logs;
+create policy "Players can create own economy audits"
+on public.economy_audit_logs for insert to authenticated
+with check (auth.uid() = user_id);
+
+create table if not exists public.game_rules_acknowledgements (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade unique,
+  version text not null default 'Update 67 · Beta Testing Tools',
+  accepted_at timestamptz not null default now(),
+  metadata jsonb not null default '{}'::jsonb
+);
+
+alter table public.game_rules_acknowledgements enable row level security;
+
+drop policy if exists "Players can manage own rules acknowledgement" on public.game_rules_acknowledgements;
+create policy "Players can manage own rules acknowledgement"
+on public.game_rules_acknowledgements for all to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create or replace function public.beta_testing_summary()
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'version', 'Update 67 · Beta Testing Tools',
+    'players', (select count(*) from public.game_saves),
+    'bug_reports', (select count(*) from public.bug_reports),
+    'beta_reports', (select count(*) from public.beta_test_reports),
+    'open_beta_reports', (select count(*) from public.beta_test_reports where status = 'open'),
+    'rules_accepted', (select count(*) from public.game_rules_acknowledgements),
+    'systems', jsonb_build_array(
+      'Update 61 · UI Cleanup + Game Polish',
+      'Update 62 · Better Battle Animations',
+      'Update 63 · Real Assets / Fantasy Graphics Pack',
+      'Update 64 · Better City Map',
+      'Update 65 · Server-Side Economy Hardening',
+      'Update 66 · Public Landing Page + Game Rules',
+      'Update 67 · Beta Testing Tools'
+    )
+  );
+$$;
+
+grant execute on function public.beta_testing_summary() to authenticated;

@@ -8,7 +8,7 @@ const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : n
 const MAX_CITADEL_LEVEL = 50;
 const MAX_HERO_LEVEL = 100;
 const MAX_PARAGON_LEVEL = 250;
-const GAME_VERSION_LABEL = "Update 60 · Beta Launch Polish";
+const GAME_VERSION_LABEL = "Update 67 · Beta Testing Tools";
 
 const DEFAULT_BALANCE_V52 = {
   configVersion: 52,
@@ -111,6 +111,38 @@ const UPDATE_53_60_SYSTEMS = [
   { update: "Update 58", title: "Real Event Scheduler", emoji: "📅", text: "Event scheduler for Double XP, Goblin Invasion, Dragon Week and Marketplace Festival." },
   { update: "Update 59", title: "City Scout System", emoji: "🔭", text: "Scout enemy cities before attacking. Observation Tower reduces revealed information." },
   { update: "Update 60", title: "Beta Launch Polish", emoji: "🚀", text: "Public landing page prep, rules, privacy notes, beta rewards and launch checklist." }
+];
+
+
+const UPDATE_61_67_SYSTEMS = [
+  { update: "Update 61", title: "UI Cleanup + Game Polish", emoji: "🧹", text: "Grouped navigation, cleaner player menus, admin-only technical panels and a better Game Hub." },
+  { update: "Update 62", title: "Better Battle Animations", emoji: "⚡", text: "Animation presets for critical hits, blocks, dodges, spell hits and auto battle feedback." },
+  { update: "Update 63", title: "Real Assets / Fantasy Graphics Pack", emoji: "🎨", text: "Royal fantasy style cards, richer icons, zone art direction and visual identity notes." },
+  { update: "Update 64", title: "Better City Map", emoji: "🏰", text: "Polished city map with districts, wall/citadel focus, economy buildings and quick upgrade shortcuts." },
+  { update: "Update 65", title: "Server-Side Economy Hardening", emoji: "🔐", text: "Economy audit checklist, premium currency protection and server validation readiness." },
+  { update: "Update 66", title: "Public Landing Page + Game Rules", emoji: "📜", text: "Player-facing rules, beta notes, privacy/cookie placeholders and launch presentation." },
+  { update: "Update 67", title: "Beta Testing Tools", emoji: "🧪", text: "QA checklist, tester notes, save export, bug workflow, test scenarios and launch readiness score." }
+];
+
+const GAME_MENU_GROUPS = [
+  { id: "main", label: "Main Game", emoji: "🏰", tabs: [
+    ["city", "City"], ["world", "World"], ["battle", "Battle"], ["hero", "Hero"], ["inventory", "Inventory"], ["companions", "Companions"]
+  ]},
+  { id: "multiplayer", label: "Multiplayer", emoji: "🏆", tabs: [
+    ["arena", "Arena"], ["guild", "Guild"], ["guildWars", "Guild Wars"], ["worldBoss", "World Boss"], ["chat", "Chat"], ["directMessages", "Messages"]
+  ]},
+  { id: "economy", label: "Economy", emoji: "🛒", tabs: [
+    ["shop", "Shop"], ["trade", "Market"], ["blacksmith", "Blacksmith"], ["daily", "Daily"], ["coinRequests", "S-Coin Requests"]
+  ]},
+  { id: "progress", label: "Progress", emoji: "⭐", tabs: [
+    ["campaign", "Campaign"], ["season", "Season"], ["progress", "VIP"], ["quests", "Quests"], ["tutorialFlow", "Guide"]
+  ]},
+  { id: "systems", label: "System", emoji: "⚙️", tabs: [
+    ["inbox", "Inbox"], ["notifications", "Alerts"], ["changelog", "Changelog"], ["reportBug", "Report Bug"], ["sound", "Sound"], ["update67", "Update 67"]
+  ]},
+  { id: "admin", label: "Admin", emoji: "🧰", adminOnly: true, tabs: [
+    ["admin", "Admin"], ["adminPlus", "Admin+"], ["security", "Security"], ["balance52", "Balance"], ["bugTracker", "Bug Tracker"], ["performance", "Optimize"]
+  ]}
 ];
 
 const GUILD_RANKS = {
@@ -637,7 +669,7 @@ function claimDailyQuestReward(game, questId) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 60;
+  next.version = 67;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -687,6 +719,20 @@ function normalizeGame(game) {
     next.update60.guildResearch[key] = Math.max(0, Math.min(20, Math.floor(Number(next.update60.guildResearch[key]) || 0)));
   });
   next.update60.guildCoins = Math.max(0, Math.floor(Number(next.update60.guildCoins) || 0));
+  next.update67 = {
+    navMode: "grouped",
+    visualPack: "royal_fantasy",
+    battleAnimations: true,
+    cityMapLevel: "polished",
+    economyHardening: true,
+    landingRulesAccepted: false,
+    betaChecklist: [],
+    qaNotes: [],
+    lastQaRunAt: null,
+    ...(next.update67 || {})
+  };
+  next.update67.betaChecklist = Array.isArray(next.update67.betaChecklist) ? next.update67.betaChecklist.slice(0, 80) : [];
+  next.update67.qaNotes = Array.isArray(next.update67.qaNotes) ? next.update67.qaNotes.slice(0, 50) : [];
   next.debugReports = Array.isArray(next.debugReports) ? next.debugReports.slice(0, 40) : [];
   next.bugReportsLocal = Array.isArray(next.bugReportsLocal) ? next.bugReportsLocal.slice(0, 40) : [];
   next.directMessages = Array.isArray(next.directMessages) ? next.directMessages.slice(0, 80) : [];
@@ -1643,7 +1689,7 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 60 · Beta Launch Polish</div>
+        <div className="badge">{GAME_VERSION_LABEL}</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{getTitleData(game).emoji} {game.playerName} · {getProgressionLabel(game)} · {game.className} · {getTitleData(game).label}</p>
       </div>
@@ -5125,7 +5171,7 @@ function Update41To50Panel({ game, setGame, session, isAdmin }) {
       </div>
 
       <div className="panel update-card-highlight">
-        <div className="badge">Update 60 · Beta Launch Polish</div>
+        <div className="badge">{GAME_VERSION_LABEL}</div>
         <h2>Beta Launch Checklist</h2>
         <p>This is the main release badge that now appears in the top bar.</p>
         <ul className="checklist">
@@ -5144,6 +5190,13 @@ function Update41To50Panel({ game, setGame, session, isAdmin }) {
 
 
 const CHANGELOG_51 = [
+  { update: "Update 67", title: "Beta Testing Tools", text: "Added grouped UI polish, fantasy visual panels, city map polish, landing rules and QA/beta testing tools." },
+  { update: "Update 66", title: "Public Landing Page + Game Rules", text: "Prepared public rules, beta notes, privacy/cookies placeholders and launch copy." },
+  { update: "Update 65", title: "Server-Side Economy Hardening", text: "Added economy hardening checklist and audit tools for premium values, marketplace and rewards." },
+  { update: "Update 64", title: "Better City Map", text: "Added polished city map/district view and building quick-action overview." },
+  { update: "Update 63", title: "Real Assets / Fantasy Graphics Pack", text: "Added royal fantasy visual direction, icon cards and zone asset plan." },
+  { update: "Update 62", title: "Better Battle Animations", text: "Added battle animation settings and critical/block/dodge visual feedback plan." },
+  { update: "Update 61", title: "UI Cleanup + Game Polish", text: "Added grouped navigation, cleaner game hub and admin-only technical organization." },
   { update: "Update 16", title: "City Raid System", text: "City attacks now damage walls, Citadel, Gold Mine and Wood Collector, with resource stealing based on destruction." },
   { update: "Update 31", title: "Security + Balance + Admin Logs", text: "Added local save audit, server grants, balance config and anti-cheat repair tools." },
   { update: "Update 40", title: "Visuals + Chat + PWA", text: "Added visual polish, chat, alerts, S-Coin requests, sound toggles and optimization tools." },
@@ -5164,7 +5217,7 @@ function buildDebugPayload(game, extra = {}) {
   const safeGame = normalizeGame(game);
   const audit = runSecurityAudit(safeGame);
   return {
-    update: "Update 60 · Beta Launch Polish",
+    update: GAME_VERSION_LABEL,
     generatedAt: new Date().toISOString(),
     player: {
       name: safeGame.playerName,
@@ -5223,7 +5276,7 @@ function ChangelogPanel({ game, setGame }) {
   return (
     <section className="grid two">
       <div className="panel">
-        <div className="badge">Update 60 · Beta Launch Polish</div>
+        <div className="badge">{GAME_VERSION_LABEL}</div>
         <h2>Game Changelog</h2>
         <p>Important milestones are listed here so players can always see what update is live.</p>
         <div className="changelog-list">
@@ -5239,7 +5292,7 @@ function ChangelogPanel({ game, setGame }) {
       <div className="panel">
         <h2>Current Build</h2>
         <div className="level-rules">
-          <div><b>Live version</b><span>Update 60 · Beta Launch Polish</span></div>
+          <div><b>Live version</b><span>{GAME_VERSION_LABEL}</span></div>
           <div><b>Bug tracking</b><span>Enabled</span></div>
           <div><b>Recovery</b><span>Error boundary + save repair</span></div>
           <div><b>Debug export</b><span>Available from Report Bug / Security</span></div>
@@ -5499,7 +5552,7 @@ function Update53To60Panel({ game, setGame, session, isAdmin }) {
   return (
     <section className="grid two">
       <div className="panel">
-        <div className="badge">Update 60 · Beta Launch Polish</div>
+        <div className="badge">{GAME_VERSION_LABEL}</div>
         <h2>Update 53–60 Bundle</h2>
         <p>This beta bundle adds server-combat prep, profiles, direct messages, guild ranks, guild research, events, scouting and launch polish.</p>
         <div className="grid two mini-stats">
@@ -5750,8 +5803,164 @@ function BetaLaunchPanel({ game, setGame }) {
   }
   return (
     <section className="grid two">
-      <div className="panel"><div className="badge">Update 60 · Beta Launch Polish</div><h2>S-Fleet Fantasy War Beta</h2><p>Browser fantasy RPG with city building, hero progression, alliances, raids, World Boss, marketplace and S-Coin manual requests.</p><div className="grid two mini-stats"><div>⚔️ PvP <b>City Raids</b></div><div>🏰 Guilds <b>Wars + Research</b></div><div>🐉 PvE <b>World Boss</b></div><div>🔒 Security <b>Admin Logs</b></div></div><button className="primary big" onClick={markSeen}>{game.update60?.landingSeen ? "Reviewed" : "Mark beta page reviewed"}</button></div>
+      <div className="panel"><div className="badge">{GAME_VERSION_LABEL}</div><h2>S-Fleet Fantasy War Beta</h2><p>Browser fantasy RPG with city building, hero progression, alliances, raids, World Boss, marketplace and S-Coin manual requests.</p><div className="grid two mini-stats"><div>⚔️ PvP <b>City Raids</b></div><div>🏰 Guilds <b>Wars + Research</b></div><div>🐉 PvE <b>World Boss</b></div><div>🔒 Security <b>Admin Logs</b></div></div><button className="primary big" onClick={markSeen}>{game.update60?.landingSeen ? "Reviewed" : "Mark beta page reviewed"}</button></div>
       <div className="panel"><h2>Rules & Privacy Notes</h2><div className="battle-log"><div>Do not exploit bugs, duplicate items or manipulate saves.</div><div>S-Coins are manual and can only be granted by the creator/admin.</div><div>Same-alliance city attacks are blocked.</div><div>S-Coins cannot be stolen in raids.</div><div>Game data is saved in Supabase under your authenticated account.</div></div></div>
+    </section>
+  );
+}
+
+
+function MenuGroup({ group, tab, setTab }) {
+  return (
+    <details className="menu-group" open={group.id === "main" || group.id === "multiplayer"}>
+      <summary>{group.emoji} {group.label}</summary>
+      <div className="menu-group-grid">
+        {group.tabs.map(([id, label]) => (
+          <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function GroupedNavigation({ tab, setTab, isAdmin }) {
+  return (
+    <nav className="tabs grouped-tabs">
+      {GAME_MENU_GROUPS.filter((group) => !group.adminOnly || isAdmin).map((group) => (
+        <MenuGroup key={group.id} group={group} tab={tab} setTab={setTab} />
+      ))}
+      <button className="danger-tab" onClick={() => setTab("resetConfirm")}>Reset progress</button>
+    </nav>
+  );
+}
+
+function Update61To67Panel({ game, setGame, session, isAdmin }) {
+  const stats = getHeroStats(game);
+  const checklist = [
+    { id: "login", label: "Create/login account", done: Boolean(session) || !hasSupabase },
+    { id: "city", label: "Collect resources and upgrade a building", done: Object.values(game.buildings || {}).some((b) => (b.level || 1) > 1) },
+    { id: "battle", label: "Win a battle or dungeon fight", done: (game.stats.wins || 0) + (game.stats.dungeonWins || 0) > 0 },
+    { id: "market", label: "Open shop/market and inspect prices", done: Boolean(game.update67?.betaChecklist?.includes("market_checked")) },
+    { id: "guild", label: "Join/create a guild or review guild tools", done: Boolean(game.guild?.id) || Boolean(game.update67?.betaChecklist?.includes("guild_checked")) },
+    { id: "bug", label: "Send or prepare a test bug report", done: (game.bugReportsLocal?.length || 0) > 0 },
+    { id: "mobile", label: "Check the game on mobile layout", done: Boolean(game.update67?.betaChecklist?.includes("mobile_checked")) }
+  ];
+  const score = Math.round((checklist.filter((item) => item.done).length / checklist.length) * 100);
+
+  function toggleCheck(id) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      const list = new Set(next.update67.betaChecklist || []);
+      if (list.has(id)) list.delete(id); else list.add(id);
+      next.update67.betaChecklist = Array.from(list);
+      addMail(next, "Beta checklist updated", `Checklist item ${id} was updated.`, "system");
+      return next;
+    });
+  }
+
+  function addTesterNote() {
+    const note = window.prompt("Tester note / issue found:");
+    if (!note) return;
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update67.qaNotes.unshift({ note, at: new Date().toISOString(), version: GAME_VERSION_LABEL });
+      next.update67.qaNotes = next.update67.qaNotes.slice(0, 50);
+      return next;
+    });
+  }
+
+  function runQa() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update67.lastQaRunAt = new Date().toISOString();
+      addMail(next, "QA checklist run", "Update 67 beta QA checklist was executed.", "system");
+      return next;
+    });
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel update-card-highlight">
+        <div className="badge">Update 67 · Beta Testing Tools</div>
+        <h2>Beta Launch Control Room</h2>
+        <p>Use this page to verify UI cleanup, visuals, economy safety, rules and launch readiness before inviting more players.</p>
+        <div className="visual-stats-grid">
+          <div><b>Readiness</b><span>{score}%</span></div>
+          <div><b>Build</b><span>{GAME_VERSION_LABEL}</span></div>
+          <div><b>Power</b><span>{stats.power}</span></div>
+          <div><b>QA notes</b><span>{game.update67?.qaNotes?.length || 0}</span></div>
+        </div>
+        <div className="qa-meter"><div style={{ width: `${score}%` }} /></div>
+        <div className="actions"><button className="primary" onClick={runQa}>Run QA check</button><button onClick={() => downloadJson("s-fleet-update67-debug.json", buildDebugPayload(game, { tabHint: "update67", checklist }))}>Export QA debug</button><button onClick={addTesterNote}>Add tester note</button></div>
+      </div>
+
+      <div className="panel">
+        <h2>Update 61–67 Checklist</h2>
+        <div className="checklist rich-checklist">
+          {checklist.map((item) => (
+            <button key={item.id} className={item.done ? "check-row done" : "check-row"} onClick={() => toggleCheck(item.id)}>
+              <span>{item.done ? "✅" : "⬜"}</span><b>{item.label}</b>
+            </button>
+          ))}
+        </div>
+        <div className="notice">Last QA run: {game.update67?.lastQaRunAt ? new Date(game.update67.lastQaRunAt).toLocaleString() : "Not yet"}</div>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 61 · UI Cleanup</div>
+        <h2>Grouped Game Navigation</h2>
+        <p>The menu is organized into Main Game, Multiplayer, Economy, Progress, System and Admin groups. Technical panels are separated from normal gameplay.</p>
+        <div className="nav-preview-grid">
+          {GAME_MENU_GROUPS.filter((group) => !group.adminOnly || isAdmin).map((group) => <div key={group.id}><b>{group.emoji} {group.label}</b><span>{group.tabs.length} tools</span></div>)}
+        </div>
+      </div>
+
+      <div className="panel battle-polish-panel">
+        <div className="badge">Update 62 · Battle Animations</div>
+        <h2>Combat Feedback Pack</h2>
+        <p>Animation presets for critical hits, blocks, dodges and spell impacts. The live combat panels use the same visual language.</p>
+        <div className="animation-preview-row"><span className="fx-card crit">CRIT</span><span className="fx-card block">BLOCK</span><span className="fx-card dodge">DODGE</span><span className="fx-card spell">SPELL</span></div>
+      </div>
+
+      <div className="panel fantasy-pack-panel">
+        <div className="badge">Update 63 · Fantasy Graphics Pack</div>
+        <h2>Royal Fantasy Art Direction</h2>
+        <div className="asset-preview-grid"><div>🏰<b>Citadel</b><span>Royal stone</span></div><div>🌲<b>Forest</b><span>Emerald zone</span></div><div>💀<b>Crypt</b><span>Undead zone</span></div><div>🐉<b>Dragon</b><span>Endgame threat</span></div></div>
+      </div>
+
+      <div className="panel city-polish-panel">
+        <div className="badge">Update 64 · Better City Map</div>
+        <h2>Polished City Districts</h2>
+        <div className="city-district-map">
+          {Object.entries(BUILDINGS).map(([key, building]) => <div key={key} className={`district district-${key}`}><span>{building.emoji}</span><b>{building.name}</b><small>Lv. {game.buildings[key]?.level || 1}</small></div>)}
+        </div>
+      </div>
+
+      <div className="panel economy-hardening-panel">
+        <div className="badge">Update 65 · Economy Hardening</div>
+        <h2>Economy Safety Audit</h2>
+        <ul className="checklist">
+          <li>✅ S-Coins protected from raids</li>
+          <li>✅ Marketplace tax and min/max rules available</li>
+          <li>✅ Admin grants are separated from player actions</li>
+          <li>✅ Negative resources are repaired by normalize/save audit</li>
+          <li>✅ Server-side validation roadmap remains active</li>
+        </ul>
+      </div>
+
+      <div className="panel launch-rules-panel">
+        <div className="badge">Update 66 · Landing + Rules</div>
+        <h2>Beta Rules</h2>
+        <ol className="rules-list"><li>No exploiting browser saves or marketplace bugs.</li><li>S-Coins are manual/admin granted only.</li><li>No attacking same-alliance cities.</li><li>Report bugs through the Report Bug tab.</li><li>Balance may change during beta testing.</li></ol>
+        <button className="primary" onClick={() => setGame((prev) => { const next = normalizeGame(prev); next.update67.landingRulesAccepted = true; addMail(next, "Rules accepted", "You accepted the beta rules.", "system"); return next; })}>{game.update67?.landingRulesAccepted ? "Rules accepted" : "Accept beta rules"}</button>
+      </div>
+
+      <div className="panel">
+        <h2>Tester Notes</h2>
+        <div className="battle-log">
+          {(game.update67?.qaNotes || []).length === 0 ? <div>No tester notes yet.</div> : game.update67.qaNotes.map((item, idx) => <div key={idx}><b>{new Date(item.at).toLocaleString()}</b><p>{item.note}</p></div>)}
+        </div>
+      </div>
     </section>
   );
 }
@@ -5880,54 +6089,32 @@ function Game({ session }) {
       <Resources game={game} />
       <Update40NotificationBar game={game} setTab={setTab} setGame={setGame} />
 
-      <nav className="tabs">
-        <button className={tab === "city" ? "active" : ""} onClick={() => setTab("city")}>🏰 City</button>
-        <button className={tab === "visuals" ? "active" : ""} onClick={() => setTab("visuals")}>✨ Visuals</button>
-        <button className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}>💬 Chat</button>
-        <button className={tab === "notifications" ? "active" : ""} onClick={() => setTab("notifications")}>🔔 Alerts</button>
-        <button className={tab === "daily" ? "active" : ""} onClick={() => setTab("daily")}>🎁 Daily</button>
-        <button className={tab === "progress" ? "active" : ""} onClick={() => setTab("progress")}>⭐ VIP</button>
-        <button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>📩 Inbox</button>
-        <button className={tab === "battle" ? "active" : ""} onClick={() => setTab("battle")}>💀 Battle</button>
-        <button className={tab === "blacksmith" ? "active" : ""} onClick={() => setTab("blacksmith")}>🔨 Blacksmith</button>
-        <button className={tab === "campaign" ? "active" : ""} onClick={() => setTab("campaign")}>📖 Campaign</button>
-        <button className={tab === "season" ? "active" : ""} onClick={() => setTab("season")}>🎟️ Season</button>
-        <button className={tab === "kingdomMap" ? "active" : ""} onClick={() => setTab("kingdomMap")}>🧭 Map</button>
-        <button className={tab === "tutorial" ? "active" : ""} onClick={() => setTab("tutorial")}>🎮 Tutorial</button>
-        <button className={tab === "tutorialFlow" ? "active" : ""} onClick={() => setTab("tutorialFlow")}>🧭 Guide</button>
-        <button className={tab === "world" ? "active" : ""} onClick={() => setTab("world")}>🗺️ World</button>
-        <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>🎒 Inventory</button>
-        <button className={tab === "shop" ? "active" : ""} onClick={() => setTab("shop")}>🛒 Shop</button>
-        <button className={tab === "trade" ? "active" : ""} onClick={() => setTab("trade")}>🤝 Trade</button>
-        <button className={tab === "hero" ? "active" : ""} onClick={() => setTab("hero")}>🧙 Hero</button>
-        <button className={tab === "companions" ? "active" : ""} onClick={() => setTab("companions")}>🐴 Companions</button>
-        <button className={tab === "arena" ? "active" : ""} onClick={() => setTab("arena")}>🏆 Arena</button>
-        <button className={tab === "guild" ? "active" : ""} onClick={() => setTab("guild")}>🛡️ Guild</button>
-        <button className={tab === "guildWars" ? "active" : ""} onClick={() => setTab("guildWars")}>⚔️ Guild Wars</button>
-        <button className={tab === "worldBoss" ? "active" : ""} onClick={() => setTab("worldBoss")}>🐉 World Boss</button>
-        <button className={tab === "coinRequests" ? "active" : ""} onClick={() => setTab("coinRequests")}>🪙 Requests</button>
-        <button className={tab === "sound" ? "active" : ""} onClick={() => setTab("sound")}>🔊 Sound</button>
-        <button className={tab === "performance" ? "active" : ""} onClick={() => setTab("performance")}>🚀 Optimize</button>
-        <button className={tab === "update50" ? "active" : ""} onClick={() => setTab("update50")}>🏁 Update 50</button>
-        <button className={tab === "changelog" ? "active" : ""} onClick={() => setTab("changelog")}>📜 Changelog</button>
-        <button className={tab === "reportBug" ? "active" : ""} onClick={() => setTab("reportBug")}>🐞 Report Bug</button>
-        {isAdmin && <button className={tab === "bugTracker" ? "active" : ""} onClick={() => setTab("bugTracker")}>🐞 Bug Tracker</button>}
-        {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
-        {isAdmin && <button className={tab === "adminPlus" ? "active" : ""} onClick={() => setTab("adminPlus")}>📊 Admin+</button>}
-        <button className={tab === "security" ? "active" : ""} onClick={() => setTab("security")}>🔒 Security</button>
-        <button className={tab === "update60" ? "active" : ""} onClick={() => setTab("update60")}>🚀 Update 60</button>
-        <button className={tab === "serverCombat" ? "active" : ""} onClick={() => setTab("serverCombat")}>🔒 Server Combat</button>
-        <button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>👤 Profile</button>
-        <button className={tab === "directMessages" ? "active" : ""} onClick={() => setTab("directMessages")}>✉️ Messages</button>
-        <button className={tab === "guildRanks" ? "active" : ""} onClick={() => setTab("guildRanks")}>🏰 Guild Ranks</button>
-        <button className={tab === "guildResearch" ? "active" : ""} onClick={() => setTab("guildResearch")}>🛒 Guild Tech</button>
-        <button className={tab === "events58" ? "active" : ""} onClick={() => setTab("events58")}>📅 Events</button>
-        <button className={tab === "scout" ? "active" : ""} onClick={() => setTab("scout")}>🔭 Scout</button>
-        <button className={tab === "betaLaunch" ? "active" : ""} onClick={() => setTab("betaLaunch")}>🚀 Launch</button>
-        <button className={tab === "balance52" ? "active" : ""} onClick={() => setTab("balance52")}>⚖️ Balance</button>
-        <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Quests</button>
-        <button className="danger-tab" onClick={resetSave}>Reset progress</button>
-      </nav>
+      <GroupedNavigation tab={tab} setTab={setTab} isAdmin={isAdmin} />
+      <details className="legacy-tabs-toggle">
+        <summary>All legacy tabs</summary>
+        <nav className="tabs compact-tabs">
+          <button className={tab === "city" ? "active" : ""} onClick={() => setTab("city")}>🏰 City</button>
+          <button className={tab === "visuals" ? "active" : ""} onClick={() => setTab("visuals")}>✨ Visuals</button>
+          <button className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}>💬 Chat</button>
+          <button className={tab === "notifications" ? "active" : ""} onClick={() => setTab("notifications")}>🔔 Alerts</button>
+          <button className={tab === "daily" ? "active" : ""} onClick={() => setTab("daily")}>🎁 Daily</button>
+          <button className={tab === "progress" ? "active" : ""} onClick={() => setTab("progress")}>⭐ VIP</button>
+          <button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>📩 Inbox</button>
+          <button className={tab === "battle" ? "active" : ""} onClick={() => setTab("battle")}>💀 Battle</button>
+          <button className={tab === "blacksmith" ? "active" : ""} onClick={() => setTab("blacksmith")}>🔨 Blacksmith</button>
+          <button className={tab === "campaign" ? "active" : ""} onClick={() => setTab("campaign")}>📖 Campaign</button>
+          <button className={tab === "season" ? "active" : ""} onClick={() => setTab("season")}>🎟️ Season</button>
+          <button className={tab === "kingdomMap" ? "active" : ""} onClick={() => setTab("kingdomMap")}>🧭 Map</button>
+          <button className={tab === "world" ? "active" : ""} onClick={() => setTab("world")}>🗺️ World</button>
+          <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>🎒 Inventory</button>
+          <button className={tab === "shop" ? "active" : ""} onClick={() => setTab("shop")}>🛒 Shop</button>
+          <button className={tab === "trade" ? "active" : ""} onClick={() => setTab("trade")}>🤝 Trade</button>
+          <button className={tab === "arena" ? "active" : ""} onClick={() => setTab("arena")}>🏆 Arena</button>
+          <button className={tab === "guild" ? "active" : ""} onClick={() => setTab("guild")}>🛡️ Guild</button>
+          <button className={tab === "update67" ? "active" : ""} onClick={() => setTab("update67")}>🧪 Update 67</button>
+          {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
+        </nav>
+      </details>
 
       {tab === "city" && <City game={game} setGame={setGame} session={session} />}
       {tab === "visuals" && <VisualsPanel game={game} />}
@@ -5973,6 +6160,8 @@ function Game({ session }) {
       {tab === "scout" && <ScoutSystemPanel game={game} setGame={setGame} session={session} />}
       {tab === "betaLaunch" && <BetaLaunchPanel game={game} setGame={setGame} />}
       {tab === "balance52" && <BalancePassPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "update67" && <Update61To67Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "resetConfirm" && <div className="panel"><h2>Reset progress</h2><p>This will reset your current save. Use only when testing.</p><button className="danger" onClick={resetSave}>Confirm reset progress</button></div>}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>
   );
@@ -5994,7 +6183,7 @@ class AppErrorBoundary extends React.Component {
         <main className="shell center">
           <section className="panel recovery-panel">
             <h1>S-Fleet Fantasy War ⚔️</h1>
-            <h2>Update 52 Recovery Mode</h2>
+            <h2>Update 67 Recovery Mode</h2>
             <p>The game caught an error, but it will not leave a black screen. Reload the game, then open Report Bug or Security to export debug information.</p>
             <div className="notice">Technical detail: {this.state.message}</div>
             <div className="row-actions"><button className="primary" onClick={() => window.location.reload()}>Reload game</button><button onClick={() => navigator.clipboard?.writeText(this.state.message || "Unknown error")}>Copy technical detail</button></div>

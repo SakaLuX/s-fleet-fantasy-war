@@ -2528,3 +2528,176 @@ textarea:focus {
 .admin-bugs {
   margin-top: 16px;
 }
+
+/* Update 61–67 · UI Cleanup + Beta Testing Tools */
+.grouped-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+.menu-group {
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.045);
+  border-radius: 22px;
+  padding: 8px;
+}
+.menu-group summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+  color: #fde68a;
+  font-weight: 950;
+}
+.menu-group summary::-webkit-details-marker { display: none; }
+.menu-group-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+}
+.menu-group-grid button,
+.compact-tabs button {
+  flex: initial;
+  min-width: 0;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+.legacy-tabs-toggle {
+  margin-bottom: 16px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(15,23,42,.55);
+  border-radius: 22px;
+  padding: 10px;
+}
+.legacy-tabs-toggle summary {
+  cursor: pointer;
+  color: #cbd5e1;
+  font-weight: 900;
+  padding: 4px 8px;
+}
+.compact-tabs {
+  margin-top: 10px;
+  padding: 8px;
+}
+.qa-meter {
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(2,6,23,.65);
+  margin: 16px 0;
+}
+.qa-meter div {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #facc15, #f97316);
+  border-radius: 999px;
+}
+.rich-checklist {
+  display: grid;
+  gap: 10px;
+}
+.check-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.05);
+  color: #e2e8f0;
+  border-radius: 18px;
+  padding: 13px 14px;
+  text-align: left;
+}
+.check-row.done {
+  border-color: rgba(34,197,94,.35);
+  background: rgba(34,197,94,.10);
+}
+.nav-preview-grid,
+.asset-preview-grid,
+.visual-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.nav-preview-grid div,
+.asset-preview-grid div {
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.055);
+  border-radius: 18px;
+  padding: 14px;
+  display: grid;
+  gap: 4px;
+}
+.nav-preview-grid span,
+.asset-preview-grid span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+.asset-preview-grid div {
+  min-height: 110px;
+  place-items: center;
+  text-align: center;
+  font-size: 30px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(251,191,36,.18), transparent 35%),
+    rgba(255,255,255,.045);
+}
+.asset-preview-grid b,
+.asset-preview-grid span { font-size: 13px; }
+.animation-preview-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 10px;
+}
+.fx-card {
+  display: grid;
+  place-items: center;
+  min-height: 70px;
+  border-radius: 20px;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  border: 1px solid rgba(255,255,255,.12);
+}
+.fx-card.crit { background: radial-gradient(circle, rgba(239,68,68,.30), rgba(255,255,255,.05)); color: #fecaca; animation: pulseCrit 1.7s infinite; }
+.fx-card.block { background: radial-gradient(circle, rgba(59,130,246,.28), rgba(255,255,255,.05)); color: #bfdbfe; }
+.fx-card.dodge { background: radial-gradient(circle, rgba(34,197,94,.26), rgba(255,255,255,.05)); color: #bbf7d0; }
+.fx-card.spell { background: radial-gradient(circle, rgba(168,85,247,.30), rgba(255,255,255,.05)); color: #e9d5ff; }
+@keyframes pulseCrit { 50% { transform: scale(1.04); filter: brightness(1.25); } }
+.city-district-map {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border-radius: 28px;
+  border: 1px solid rgba(255,255,255,.10);
+  background:
+    linear-gradient(135deg, rgba(146,64,14,.22), rgba(15,23,42,.68)),
+    radial-gradient(circle at top, rgba(34,197,94,.12), transparent 50%);
+}
+.district {
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border-radius: 22px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.11);
+  background: rgba(2,6,23,.42);
+}
+.district span { font-size: 34px; }
+.district b { font-size: 13px; }
+.district small { color: #fde68a; }
+.rules-list {
+  color: #cbd5e1;
+  display: grid;
+  gap: 9px;
+  padding-left: 20px;
+}
+@media (max-width: 720px) {
+  .grouped-tabs,
+  .menu-group-grid,
+  .animation-preview-row,
+  .city-district-map {
+    grid-template-columns: 1fr;
+  }
+}
