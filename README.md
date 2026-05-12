@@ -1,57 +1,33 @@
-# S-Fleet Fantasy War ⚔️ — Update 10
+# S-Fleet Fantasy War ⚔️ — Update 11-15 Bundle
 
-Update 10 adaugă sistemele zilnice și rezolvă problema cu energia care revenea la 10 după consum.
+Acest pachet include toate update-urile cerute într-un singur deploy:
 
-## Ce conține
+- Update 11: VIP + Achievements + Titles
+- Update 12: Guild Wars
+- Update 13: World Boss
+- Update 14: Auction House avansat
+- Update 15: Mobile UI polish + PWA app
+- Blocare atac/PvP între membri din aceeași alianță
+- Monștri mai puternici în funcție de nivel, uneori Elite/Strong peste nivelul tău
+- Buton **Cheamă aliat** în lupta normală, pentru ajutor de la alianță
 
-- Daily Login Rewards pe 7 zile
-- Daily Quests cu reset zilnic
-- Inbox / Mail pentru reward-uri, shield, vânzări și progres
-- Battle Reports pentru atacurile pe oraș
-- Shield Protection 2h / 8h / 24h
-- verificare shield în Supabase pentru city attacks
-- buton **Vinde tot inventarul**
-- fix energie: energia curentă rămâne 0 după consum și nu revine automat la 10
-- energia maximă respectă regula: **level 1 = 10**, apoi **+1 / level sau Paragon**
+## Foarte important
 
-## Important pentru Supabase
+Rulează din nou `supabase/schema.sql` în Supabase SQL Editor. Scriptul este safe pentru datele existente și adaugă:
 
-Pentru Shield Protection la atacurile pe oraș, rulează scriptul SQL nou:
+- `get_guild_members`
+- `guild_wars`
+- `declare_guild_war`
+- `get_guild_wars`
+- `add_guild_war_score`
+- `world_boss_state`
+- `get_world_boss`
+- `attack_world_boss`
+- protecție SQL: nu poți ataca un oraș din aceeași alianță
 
-```txt
-Supabase
-→ SQL Editor
-→ New query
-→ lipești tot din supabase/schema.sql
-→ Run
-```
+## Netlify
 
-Scriptul păstrează datele existente și actualizează funcția `launch_city_attack`, astfel încât orașele cu shield activ nu pot fi atacate.
-
-## Cum urci update-ul
-
-```txt
-GitHub
-→ repository s-fleet-fantasy-war
-→ Add file
-→ Upload files
-→ tragi toate fișierele/folderele din ZIP
-→ Commit changes
-```
-
-Netlify va face deploy automat.
-
-Dacă nu pornește automat:
-
-```txt
-Netlify
-→ site-ul tău
-→ Deploys
-→ Trigger deploy
-→ Deploy site
-```
-
-## Build settings Netlify
+Build settings rămân la fel:
 
 ```txt
 Build command: npm run build
@@ -60,11 +36,19 @@ Base directory: gol
 Functions directory: gol
 ```
 
-## Environment variables rămân aceleași
+Environment variables rămân:
 
 ```txt
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
 ```
 
-Nu pune parola bazei de date, nu pune service_role, nu pune secret key.
+## PWA
+
+Pachetul include:
+
+- `manifest.webmanifest`
+- `sw.js`
+- `icon.svg`
+
+Pe telefon, site-ul poate fi adăugat pe ecranul principal din browser.

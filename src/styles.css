@@ -2212,3 +2212,64 @@ select:focus {
     text-align: left;
   }
 }
+
+
+/* Update 15: VIP, Achievements, Guild Wars, World Boss, Auction House, Mobile/PWA polish */
+.progression-layout,
+.guild-war-layout,
+.world-boss-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.full-span { grid-column: 1 / -1; }
+.title-grid,
+.achievement-grid,
+.war-list,
+.auction-controls { display: grid; gap: 12px; }
+.title-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.achievement-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.title-card,
+.achievement-card,
+.war-row {
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 22px;
+  background: rgba(255,255,255,.055);
+  color: #fff;
+  padding: 14px;
+  text-align: left;
+}
+.title-card.active,
+.achievement-card.claimed {
+  border-color: rgba(251,191,36,.55);
+  background: rgba(251,191,36,.12);
+}
+.title-card small,
+.achievement-card small,
+.war-row span { display: block; color: #cbd5e1; margin-top: 6px; }
+.achievement-card button { width: 100%; margin-top: 12px; border: 0; border-radius: 16px; padding: 11px; font-weight: 900; background: linear-gradient(135deg,#fcd34d,#f97316); color: #0f172a; }
+.boss-panel { text-align: center; }
+.auction-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 14px; }
+.notice.warning { border-color: rgba(251,191,36,.35); background: rgba(251,191,36,.10); color: #fde68a; }
+
+@media (max-width: 780px) {
+  .shell { width: min(100% - 12px, 1280px); padding: 8px 0 90px; }
+  .topbar { padding: 14px; border-radius: 22px; }
+  .topbar h1 { font-size: 25px; }
+  .resources { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .resource { padding: 13px; }
+  .tabs {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    border-radius: 22px 22px 0 0;
+    max-height: 42vh;
+    overflow-y: auto;
+  }
+  .tabs button { flex: 1 1 105px; padding: 11px 10px; font-size: 13px; }
+  .panel { padding: 15px; border-radius: 22px; }
+  .progression-layout,
+  .guild-war-layout,
+  .world-boss-layout,
+  .title-grid,
+  .achievement-grid,
+  .auction-controls { grid-template-columns: 1fr; }
+}

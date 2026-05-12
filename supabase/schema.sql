@@ -1,6 +1,6 @@
--- S-Fleet Fantasy War ⚔️ — Update 8
+-- S-Fleet Fantasy War ⚔️ — Update 15
 -- Rulează tot scriptul în Supabase Dashboard > SQL Editor > New query > Run.
--- Păstrează salvările existente și adaugă Marketplace pentru item trading.
+-- Păstrează salvările existente și adaugă VIP, Guild Wars, World Boss, Auction House și protecție anti-friendly-fire.
 
 create table if not exists public.game_saves (
   id uuid primary key default gen_random_uuid(),
@@ -505,6 +505,14 @@ begin
     raise exception 'Target player not found';
   end if;
 
+  if attacker_profile ? 'guildId'
+     and defender_profile ? 'guildId'
+     and nullif(attacker_profile->>'guildId', '') is not null
+     and nullif(defender_profile->>'guildId', '') is not null
+     and attacker_profile->>'guildId' = defender_profile->>'guildId' then
+    raise exception 'You cannot attack a member from the same guild';
+  end if;
+
   if defender_profile ? 'shieldUntil'
      and nullif(defender_profile->>'shieldUntil', '') is not null
      and (defender_profile->>'shieldUntil')::timestamptz > now() then
@@ -619,3 +627,296 @@ as $$
 $$;
 
 grant execute on function public.get_city_attacks_for_player() to authenticated;
+
+
+-- Update 15: guild members helper
+create or replace function public.get_guild_members(target_guild_id uuid)
+returns table (
+  user_id uuid,
+  player_name text,
+  class_name text,
+  power int,
+  role text,
+  public_profile jsonb
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    gm.user_id,
+    coalesce(gs.player_name, 'Unknown Hero') as player_name,
+    coalesce(gs.class_name, 'Knight') as class_name,
+    coalesce((gs.public_profile->>'power')::int, 0) as power,
+    gm.role,
+    coalesce(gs.public_profile, '{}'::jsonb) as public_profile
+  from public.guild_members gm
+  left join public.game_saves gs on gs.user_id = gm.user_id
+  where gm.guild_id = target_guild_id
+  order by power desc, gm.joined_at asc;
+$$;
+
+grant execute on function public.get_guild_members(uuid) to authenticated;
+
+-- Update 15: Guild Wars
+create table if not exists public.guild_wars (
+  id uuid primary key default gen_random_uuid(),
+  attacker_guild_id uuid not null references public.guilds(id) on delete cascade,
+  defender_guild_id uuid not null references public.guilds(id) on delete cascade,
+  attacker_score int not null default 0,
+  defender_score int not null default 0,
+  status text not null default 'active' check (status in ('active', 'finished', 'cancelled')),
+  starts_at timestamptz not null default now(),
+  ends_at timestamptz not null default (now() + interval '24 hours'),
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint guild_wars_no_self check (attacker_guild_id <> defender_guild_id)
+);
+
+alter table public.guild_wars enable row level security;
+
+drop trigger if exists set_guild_wars_updated_at on public.guild_wars;
+create trigger set_guild_wars_updated_at
+before update on public.guild_wars
+for each row
+execute function public.set_updated_at();
+
+drop policy if exists "Players can view guild wars" on public.guild_wars;
+create policy "Players can view guild wars"
+on public.guild_wars
+for select
+to authenticated
+using (true);
+
+create index if not exists guild_wars_active_idx on public.guild_wars(status, ends_at desc);
+
+create or replace function public.declare_guild_war(target_guild_id uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  my_guild_id uuid;
+  new_id uuid;
+begin
+  select gm.guild_id into my_guild_id
+  from public.guild_members gm
+  where gm.user_id = auth.uid();
+
+  if my_guild_id is null then
+    raise exception 'You are not in a guild';
+  end if;
+
+  if my_guild_id = target_guild_id then
+    raise exception 'You cannot declare war on your own guild';
+  end if;
+
+  if exists(
+    select 1 from public.guild_wars gw
+    where gw.status = 'active'
+      and gw.ends_at > now()
+      and ((gw.attacker_guild_id = my_guild_id and gw.defender_guild_id = target_guild_id)
+        or (gw.attacker_guild_id = target_guild_id and gw.defender_guild_id = my_guild_id))
+  ) then
+    raise exception 'A guild war is already active between these alliances';
+  end if;
+
+  insert into public.guild_wars(attacker_guild_id, defender_guild_id, created_by)
+  values (my_guild_id, target_guild_id, auth.uid())
+  returning id into new_id;
+
+  return new_id;
+end;
+$$;
+
+grant execute on function public.declare_guild_war(uuid) to authenticated;
+
+create or replace function public.get_guild_wars()
+returns table (
+  id uuid,
+  attacker_guild_id uuid,
+  defender_guild_id uuid,
+  attacker_name text,
+  attacker_tag text,
+  defender_name text,
+  defender_tag text,
+  attacker_score int,
+  defender_score int,
+  status text,
+  starts_at timestamptz,
+  ends_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  update public.guild_wars
+  set status = 'finished', updated_at = now()
+  where status = 'active' and ends_at <= now();
+
+  select
+    gw.id,
+    gw.attacker_guild_id,
+    gw.defender_guild_id,
+    ag.name as attacker_name,
+    ag.tag as attacker_tag,
+    dg.name as defender_name,
+    dg.tag as defender_tag,
+    gw.attacker_score,
+    gw.defender_score,
+    gw.status,
+    gw.starts_at,
+    gw.ends_at
+  from public.guild_wars gw
+  join public.guilds ag on ag.id = gw.attacker_guild_id
+  join public.guilds dg on dg.id = gw.defender_guild_id
+  where gw.status = 'active' or gw.created_at >= now() - interval '7 days'
+  order by gw.status asc, gw.ends_at desc
+  limit 100;
+$$;
+
+grant execute on function public.get_guild_wars() to authenticated;
+
+create or replace function public.add_guild_war_score(score_points int)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  my_guild_id uuid;
+  clean_points int := greatest(1, least(score_points, 100000));
+begin
+  select gm.guild_id into my_guild_id
+  from public.guild_members gm
+  where gm.user_id = auth.uid();
+
+  if my_guild_id is null then
+    raise exception 'You are not in a guild';
+  end if;
+
+  update public.guild_wars
+  set attacker_score = attacker_score + clean_points,
+      updated_at = now()
+  where status = 'active'
+    and ends_at > now()
+    and attacker_guild_id = my_guild_id;
+
+  update public.guild_wars
+  set defender_score = defender_score + clean_points,
+      updated_at = now()
+  where status = 'active'
+    and ends_at > now()
+    and defender_guild_id = my_guild_id;
+
+  return true;
+end;
+$$;
+
+grant execute on function public.add_guild_war_score(int) to authenticated;
+
+-- Update 15: World Boss shared state
+create table if not exists public.world_boss_state (
+  id text primary key default 'current',
+  name text not null default 'Ancient Dragon',
+  emoji text not null default '🐉',
+  hp int not null default 500000,
+  max_hp int not null default 500000,
+  starts_at timestamptz not null default now(),
+  ends_at timestamptz not null default (now() + interval '24 hours'),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.world_boss_state enable row level security;
+
+drop policy if exists "Players can view world boss" on public.world_boss_state;
+create policy "Players can view world boss"
+on public.world_boss_state
+for select
+to authenticated
+using (true);
+
+insert into public.world_boss_state(id)
+values ('current')
+on conflict (id) do nothing;
+
+create or replace function public.reset_world_boss_if_needed()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.world_boss_state(id)
+  values ('current')
+  on conflict (id) do nothing;
+
+  update public.world_boss_state
+  set hp = max_hp,
+      starts_at = now(),
+      ends_at = now() + interval '24 hours',
+      updated_at = now()
+  where id = 'current'
+    and (hp <= 0 or ends_at <= now());
+end;
+$$;
+
+create or replace function public.get_world_boss()
+returns table (
+  id text,
+  name text,
+  emoji text,
+  hp int,
+  max_hp int,
+  starts_at timestamptz,
+  ends_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.reset_world_boss_if_needed();
+  return query
+  select wb.id, wb.name, wb.emoji, wb.hp, wb.max_hp, wb.starts_at, wb.ends_at
+  from public.world_boss_state wb
+  where wb.id = 'current';
+end;
+$$;
+
+grant execute on function public.get_world_boss() to authenticated;
+
+create or replace function public.attack_world_boss(damage_points int)
+returns table (
+  id text,
+  name text,
+  emoji text,
+  hp int,
+  max_hp int,
+  starts_at timestamptz,
+  ends_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  dmg int := greatest(1, least(damage_points, 250000));
+begin
+  perform public.reset_world_boss_if_needed();
+
+  update public.world_boss_state
+  set hp = greatest(0, hp - dmg),
+      updated_at = now()
+  where id = 'current';
+
+  return query
+  select wb.id, wb.name, wb.emoji, wb.hp, wb.max_hp, wb.starts_at, wb.ends_at
+  from public.world_boss_state wb
+  where wb.id = 'current';
+end;
+$$;
+
+grant execute on function public.attack_world_boss(int) to authenticated;

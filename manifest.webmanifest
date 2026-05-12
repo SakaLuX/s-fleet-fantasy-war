@@ -1,0 +1,16 @@
+{
+  "name": "S-Fleet Fantasy War",
+  "short_name": "S-Fleet War",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "description": "Fantasy browser RPG cu guilds, PvP, world boss \u0219i marketplace.",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

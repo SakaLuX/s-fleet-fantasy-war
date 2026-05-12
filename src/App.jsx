@@ -9,7 +9,51 @@ const MAX_CITADEL_LEVEL = 50;
 const MAX_HERO_LEVEL = 100;
 const MAX_PARAGON_LEVEL = 250;
 
-const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v11";
+const MAX_VIP_LEVEL = 10;
+
+const VIP_LEVELS = [
+  { level: 1, cost: 8, bonus: { resource: 3, xp: 2, build: 1, pvp: 1 }, label: "VIP I" },
+  { level: 2, cost: 12, bonus: { resource: 5, xp: 4, build: 2, pvp: 2 }, label: "VIP II" },
+  { level: 3, cost: 18, bonus: { resource: 8, xp: 6, build: 3, pvp: 3 }, label: "VIP III" },
+  { level: 4, cost: 25, bonus: { resource: 10, xp: 8, build: 4, pvp: 4 }, label: "VIP IV" },
+  { level: 5, cost: 35, bonus: { resource: 13, xp: 10, build: 5, pvp: 5 }, label: "VIP V" },
+  { level: 6, cost: 48, bonus: { resource: 16, xp: 12, build: 6, pvp: 6 }, label: "VIP VI" },
+  { level: 7, cost: 64, bonus: { resource: 19, xp: 14, build: 7, pvp: 7 }, label: "VIP VII" },
+  { level: 8, cost: 82, bonus: { resource: 22, xp: 16, build: 8, pvp: 8 }, label: "VIP VIII" },
+  { level: 9, cost: 105, bonus: { resource: 26, xp: 18, build: 9, pvp: 9 }, label: "VIP IX" },
+  { level: 10, cost: 135, bonus: { resource: 30, xp: 22, build: 10, pvp: 12 }, label: "VIP X" }
+];
+
+const TITLES = {
+  novice: { label: "Novice Lord", emoji: "🌱", bonus: { hp: 0, attack: 0, defense: 0, mana: 0, power: 0 } },
+  goblin_slayer: { label: "Goblin Slayer", emoji: "🧌", bonus: { hp: 20, attack: 3, defense: 1, mana: 0, power: 120 } },
+  city_builder: { label: "City Builder", emoji: "🏰", bonus: { hp: 35, attack: 0, defense: 4, mana: 0, power: 180 } },
+  arena_champion: { label: "Arena Champion", emoji: "🏆", bonus: { hp: 40, attack: 6, defense: 2, mana: 0, power: 260 } },
+  paragon: { label: "Paragon Hero", emoji: "⭐", bonus: { hp: 80, attack: 8, defense: 5, mana: 30, power: 450 } },
+  guild_guardian: { label: "Guild Guardian", emoji: "🛡️", bonus: { hp: 100, attack: 5, defense: 10, mana: 0, power: 520 } },
+  world_bane: { label: "World Bane", emoji: "🐉", bonus: { hp: 120, attack: 12, defense: 6, mana: 40, power: 760 } }
+};
+
+const ACHIEVEMENTS = [
+  { id: "wins_10", title: "Fighter", text: "Câștigă 10 lupte.", titleId: "goblin_slayer", reward: { diamonds: 15, xp: 120 }, check: (game) => (game.stats.wins || 0) >= 10 },
+  { id: "citadel_10", title: "Stone Kingdom", text: "Ridică Citadel la level 10.", titleId: "city_builder", reward: { gold: 2500, wood: 1800, crystals: 120 }, check: (game) => (game.buildings.citadel?.level || 1) >= 10 },
+  { id: "pvp_10", title: "Arena Champion", text: "Câștigă 10 lupte PvP.", titleId: "arena_champion", reward: { diamonds: 30, sCoins: 2, xp: 200 }, check: (game) => (game.stats.pvpWins || 0) >= 10 },
+  { id: "paragon_1", title: "Beyond Level 100", text: "Ajungi la primul nivel Paragon.", titleId: "paragon", reward: { diamonds: 50, sCoins: 4 }, check: (game) => (game.paragonLevel || 0) >= 1 },
+  { id: "guild_member", title: "Alliance Oath", text: "Intră într-o alianță.", titleId: "guild_guardian", reward: { gold: 1800, crystals: 80 }, check: (game) => Boolean(game.guild?.id) },
+  { id: "world_boss_5000", title: "World Boss Hunter", text: "Fă 5000 damage total la World Boss.", titleId: "world_bane", reward: { diamonds: 75, sCoins: 5 }, check: (game) => (game.stats.worldBossDamage || 0) >= 5000 }
+];
+
+const WORLD_BOSS_CONFIG = {
+  id: "ancient_dragon",
+  name: "Ancient Dragon",
+  emoji: "🐉",
+  maxHp: 500000,
+  durationHours: 24,
+  rewardPreview: "Gold, Diamonds, S-Coins și iteme rare în funcție de damage."
+};
+
+
+const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v15";
 
 const CLASSES = {
   Knight: {
@@ -321,7 +365,7 @@ const DAILY_QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 11,
+    version: 15,
     playerName,
     className,
     level: 1,
@@ -329,6 +373,10 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
     xp: 0,
     xpToNext: 100,
     resources: { gold: 350, wood: 220, crystals: 45, diamonds: 20, sCoins: 0, energy: 10 },
+    vip: { level: 0 },
+    achievements: { claimed: [] },
+    title: "novice",
+    worldBoss: { totalDamage: 0, attacksToday: 0, lastAttackDate: null },
     city: { lastResourceCollectionAt: null, shieldUntil: null },
     daily: {
       date: todayKey(),
@@ -352,7 +400,7 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
     equipment: { weapon: null, armor: null, ring: null, amulet: null },
     mounts: { owned: ["brown_horse"], active: "brown_horse" },
     paladin: { level: 1, xp: 0, xpToNext: 100, mode: "city" },
-    stats: { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, pvpWins: 0, pvpLosses: 0, cityAttackWins: 0, cityAttackLosses: 0, cityDefenseWins: 0, cityDefenseLosses: 0 },
+    stats: { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, pvpWins: 0, pvpLosses: 0, cityAttackWins: 0, cityAttackLosses: 0, cityDefenseWins: 0, cityDefenseLosses: 0, worldBossDamage: 0, guildWarScore: 0 },
     completedQuests: [],
     world: { selectedZoneId: "goblin_forest", completedBosses: [], clears: {} },
     createdAt: new Date().toISOString()
@@ -487,7 +535,7 @@ function claimDailyQuestReward(game, questId) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 11;
+  next.version = 15;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -508,6 +556,18 @@ function normalizeGame(game) {
   next.paragonLevel = Math.max(0, Math.min(MAX_PARAGON_LEVEL, Math.floor(Number(next.paragonLevel) || 0)));
   if (next.level < MAX_HERO_LEVEL) next.paragonLevel = 0;
   next.classLocked = true;
+  next.vip = { level: 0, ...(next.vip || {}) };
+  next.vip.level = Math.max(0, Math.min(MAX_VIP_LEVEL, Math.floor(Number(next.vip.level) || 0)));
+  next.achievements = { claimed: [], ...(next.achievements || {}) };
+  next.achievements.claimed = Array.isArray(next.achievements.claimed) ? next.achievements.claimed : [];
+  next.title = TITLES[next.title] ? next.title : "novice";
+  next.worldBoss = { totalDamage: 0, attacksToday: 0, lastAttackDate: null, ...(next.worldBoss || {}) };
+  if (next.worldBoss.lastAttackDate !== todayKey()) {
+    next.worldBoss.lastAttackDate = todayKey();
+    next.worldBoss.attacksToday = 0;
+  }
+  next.worldBoss.totalDamage = Math.max(0, Math.floor(Number(next.worldBoss.totalDamage) || 0));
+  next.worldBoss.attacksToday = Math.max(0, Math.floor(Number(next.worldBoss.attacksToday) || 0));
 
   const savedBuildings = next.buildings && typeof next.buildings === "object" ? next.buildings : {};
   const citadelLevel = Math.max(1, Math.min(MAX_CITADEL_LEVEL, Math.floor(Number(savedBuildings.citadel?.level) || 1)));
@@ -547,7 +607,7 @@ function normalizeGame(game) {
   next.paladin.xpToNext = Math.max(80, Math.floor(Number(next.paladin.xpToNext) || 100));
   next.paladin.mode = next.paladin.mode === "battle" ? "battle" : "city";
 
-  next.stats = { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, pvpWins: 0, pvpLosses: 0, cityAttackWins: 0, cityAttackLosses: 0, cityDefenseWins: 0, cityDefenseLosses: 0, ...(next.stats || {}) };
+  next.stats = { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, pvpWins: 0, pvpLosses: 0, cityAttackWins: 0, cityAttackLosses: 0, cityDefenseWins: 0, cityDefenseLosses: 0, worldBossDamage: 0, guildWarScore: 0, ...(next.stats || {}) };
   Object.keys(next.stats).forEach((key) => { next.stats[key] = Math.max(0, Math.floor(Number(next.stats[key]) || 0)); });
   next.completedQuests = Array.isArray(next.completedQuests) ? next.completedQuests : [];
   next.world = { selectedZoneId: "goblin_forest", completedBosses: [], clears: {}, ...(next.world || {}) };
@@ -671,6 +731,42 @@ function getMountBonus(game) {
   return mount?.bonus || { hp: 0, attack: 0, defense: 0, mana: 0, energy: 0, power: 0 };
 }
 
+function getVipData(game) {
+  const level = Math.max(0, Math.min(MAX_VIP_LEVEL, Number(game.vip?.level || 0)));
+  return level > 0 ? VIP_LEVELS[level - 1] : { level: 0, cost: VIP_LEVELS[0].cost, bonus: { resource: 0, xp: 0, build: 0, pvp: 0 }, label: "VIP 0" };
+}
+
+function getVipBonus(game) {
+  return getVipData(game).bonus;
+}
+
+function getTitleData(game) {
+  return TITLES[game.title] || TITLES.novice;
+}
+
+function getTitleBonus(game) {
+  return getTitleData(game).bonus;
+}
+
+function getUnlockedTitles(game) {
+  const unlocked = new Set(["novice"]);
+  ACHIEVEMENTS.forEach((achievement) => {
+    if (game.achievements?.claimed?.includes(achievement.id) && achievement.titleId) unlocked.add(achievement.titleId);
+  });
+  return Array.from(unlocked).filter((titleId) => TITLES[titleId]);
+}
+
+function getAchievementProgressText(game, achievement) {
+  if (achievement.id === "wins_10") return `${Math.min(game.stats.wins || 0, 10)}/10`;
+  if (achievement.id === "citadel_10") return `${Math.min(game.buildings.citadel?.level || 1, 10)}/10`;
+  if (achievement.id === "pvp_10") return `${Math.min(game.stats.pvpWins || 0, 10)}/10`;
+  if (achievement.id === "paragon_1") return `${Math.min(game.paragonLevel || 0, 1)}/1`;
+  if (achievement.id === "guild_member") return game.guild?.id ? "1/1" : "0/1";
+  if (achievement.id === "world_boss_5000") return `${Math.min(game.stats.worldBossDamage || 0, 5000)}/5000`;
+  return achievement.check(game) ? "Done" : "În progres";
+}
+
+
 function getPaladinBattleBonus(game) {
   const paladin = game.paladin || { level: 1, mode: "city" };
   if (paladin.mode !== "battle") return { hp: 0, attack: 0, defense: 0, mana: 0, power: 0, damage: 0 };
@@ -702,12 +798,14 @@ function getHeroStats(game) {
   const gear = equipmentBonus(game);
   const mount = getMountBonus(game);
   const paladin = getPaladinBattleBonus(game);
+  const title = getTitleBonus(game);
+  const vip = getVipBonus(game);
   const progression = getProgressionLevel(game);
 
-  const hp = base.hp + levelBonus * 18 + (game.paragonLevel || 0) * 6 + b.citadel.level * 12 + gear.hp + mount.hp + paladin.hp;
-  const attack = base.attack + levelBonus * 4 + (game.paragonLevel || 0) * 1 + b.barracks.level * 3 + gear.attack + mount.attack + paladin.attack;
-  const defense = base.defense + levelBonus * 2 + Math.floor((game.paragonLevel || 0) * 0.7) + b.citadel.level * 2 + gear.defense + mount.defense + paladin.defense;
-  const mana = base.mana + levelBonus * 7 + (game.paragonLevel || 0) * 2 + b.academy.level * 8 + gear.mana + mount.mana + paladin.mana;
+  const hp = Math.round((base.hp + levelBonus * 18 + (game.paragonLevel || 0) * 6 + b.citadel.level * 12 + gear.hp + mount.hp + paladin.hp + title.hp) * (1 + (vip.pvp || 0) / 200));
+  const attack = Math.round((base.attack + levelBonus * 4 + (game.paragonLevel || 0) * 1 + b.barracks.level * 3 + gear.attack + mount.attack + paladin.attack + title.attack) * (1 + (vip.pvp || 0) / 250));
+  const defense = Math.round((base.defense + levelBonus * 2 + Math.floor((game.paragonLevel || 0) * 0.7) + b.citadel.level * 2 + gear.defense + mount.defense + paladin.defense + title.defense) * (1 + (vip.pvp || 0) / 250));
+  const mana = base.mana + levelBonus * 7 + (game.paragonLevel || 0) * 2 + b.academy.level * 8 + gear.mana + mount.mana + paladin.mana + title.mana;
   const power =
     100 +
     progression * 45 +
@@ -720,7 +818,9 @@ function getHeroStats(game) {
     (b.watchtower?.level || 0) * 30 +
     gear.power +
     mount.power +
-    paladin.power;
+    paladin.power +
+    title.power +
+    (game.vip?.level || 0) * 180;
 
   return { hp, attack, defense, mana, power, gear, mount, paladin };
 }
@@ -754,6 +854,8 @@ function createPublicProfile(game) {
   return {
     playerName: safe.playerName,
     className: safe.className,
+    title: getTitleData(safe).label,
+    vipLevel: safe.vip?.level || 0,
     level: safe.level,
     paragonLevel: safe.paragonLevel || 0,
     progressionLevel: getProgressionLevel(safe),
@@ -947,7 +1049,7 @@ function applyReward(game, reward) {
   next.resources.crystals += reward.crystals || 0;
   next.resources.diamonds += reward.diamonds || 0;
   next.resources.sCoins += reward.sCoins || 0;
-  next.xp += reward.xp || 0;
+  next.xp += Math.round((reward.xp || 0) * (1 + (getVipBonus(next).xp || 0) / 100));
 
   while (next.xp >= next.xpToNext) {
     if (next.level < MAX_HERO_LEVEL) {
@@ -1066,7 +1168,13 @@ function scaleEnemy(enemy, level, extraScale = 1) {
 
 function randomEnemy(level) {
   const maxIndex = Math.min(ENEMIES.length - 1, Math.floor((level - 1) / 2));
-  return scaleEnemy(ENEMIES[Math.floor(Math.random() * (maxIndex + 1))], level, 1);
+  const difficultyRoll = Math.random();
+  const extraScale = difficultyRoll > 0.88 ? 1.45 : difficultyRoll > 0.68 ? 1.18 : 1;
+  const enemyLevel = level + (difficultyRoll > 0.88 ? Math.ceil(level * 0.18) + 2 : difficultyRoll > 0.68 ? 1 : 0);
+  const enemy = scaleEnemy(ENEMIES[Math.floor(Math.random() * (maxIndex + 1))], enemyLevel, extraScale);
+  enemy.difficulty = extraScale > 1.35 ? "Elite" : extraScale > 1.05 ? "Strong" : "Normal";
+  if (enemy.difficulty !== "Normal") enemy.name = `${enemy.difficulty} ${enemy.name}`;
+  return enemy;
 }
 
 function getZone(zoneId) {
@@ -1258,15 +1366,16 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 10 · Daily / Inbox / Shield</div>
+        <div className="badge">Update 15 · VIP / Guild Wars / World Boss / PWA</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
-        <p>{game.playerName} · {getProgressionLabel(game)} · {game.className}</p>
+        <p>{getTitleData(game).emoji} {game.playerName} · {getProgressionLabel(game)} · {game.className} · {getTitleData(game).label}</p>
       </div>
 
       <div className="top-actions">
         <div className="stat-box">👑 <b>{stats.power}</b><span>Power</span></div>
         <div className="stat-box">🏆 <b>{game.stats.wins}</b><span>Wins</span></div>
         <div className="stat-box">🎒 <b>{totalItemCount(game)}</b><span>Items</span></div>
+        <div className="stat-box">⭐ <b>{game.vip?.level || 0}</b><span>VIP</span></div>
         <div className="stat-box">🪙 <b>{game.resources.sCoins}</b><span>S-Coins</span></div>
         <div className="stat-box">📩 <b>{unreadMailCount(game)}</b><span>Mail</span></div>
         <div className="stat-box">💾 <b>{saveStatus}</b><span>Save</span></div>
@@ -1479,6 +1588,7 @@ function Battle({ game, setGame }) {
   const [mana, setMana] = useState(heroStats.mana);
   const [log, setLog] = useState(["Un inamic apare lângă citadelă."]);
   const [busy, setBusy] = useState(false);
+  const [guildHelper, setGuildHelper] = useState(null);
 
   useEffect(() => {
     setHeroHp(heroStats.hp);
@@ -1494,6 +1604,33 @@ function Battle({ game, setGame }) {
     setHeroHp(heroStats.hp);
     setMana(heroStats.mana);
     setLog(["O nouă amenințare se apropie de regat."]);
+  }
+
+  async function callGuildHelper() {
+    if (!game.guild?.id || !supabase) {
+      addLog("Ai nevoie de o alianță pentru a chema ajutor.");
+      return;
+    }
+    const { data, error } = await supabase.rpc("get_guild_members", { target_guild_id: game.guild.id });
+    if (error) {
+      addLog(`Nu pot chema alianța: ${error.message}. Rulează SQL-ul din Update 15.`);
+      return;
+    }
+    const allies = (data || []).filter((ally) => ally.user_id !== undefined);
+    const bestAlly = allies
+      .filter((ally) => ally.user_id !== null)
+      .sort((a, b) => Number(b.power || 0) - Number(a.power || 0))[0];
+    if (!bestAlly) {
+      addLog("Nu există aliat disponibil în alianță.");
+      return;
+    }
+    const helper = {
+      name: bestAlly.player_name || "Guild Ally",
+      power: Number(bestAlly.power || 0),
+      attackBonus: Math.max(8, Math.round(Number(bestAlly.power || 0) * 0.025))
+    };
+    setGuildHelper(helper);
+    addLog(`${helper.name} răspunde chemării alianței: +${helper.attackBonus} damage pe lovitură.`);
   }
 
   function finishWin(defeatedEnemy) {
@@ -1576,6 +1713,11 @@ function Battle({ game, setGame }) {
       addLog(`Paladinul lovește pentru ${heroStats.paladin.damage} damage.`);
     }
 
+    if (guildHelper) {
+      damage += guildHelper.attackBonus;
+      addLog(`${guildHelper.name} ajută din alianță pentru ${guildHelper.attackBonus} damage.`);
+    }
+
     setBusy(true);
     setMana(nextMana);
 
@@ -1623,6 +1765,7 @@ function Battle({ game, setGame }) {
           <button className="primary alt" disabled={busy} onClick={() => attack("skill")}>
             {CLASSES[game.className].skill.name}
           </button>
+          <button disabled={busy || Boolean(guildHelper) || !game.guild?.id} onClick={callGuildHelper}>🤝 Cheamă aliat</button>
         </div>
       </div>
 
@@ -2091,6 +2234,18 @@ function Shop({ game, setGame }) {
     buy({ sCoins: 10 }, (next) => {
       next.className = classChoice;
       next.classLocked = true;
+  next.vip = { level: 0, ...(next.vip || {}) };
+  next.vip.level = Math.max(0, Math.min(MAX_VIP_LEVEL, Math.floor(Number(next.vip.level) || 0)));
+  next.achievements = { claimed: [], ...(next.achievements || {}) };
+  next.achievements.claimed = Array.isArray(next.achievements.claimed) ? next.achievements.claimed : [];
+  next.title = TITLES[next.title] ? next.title : "novice";
+  next.worldBoss = { totalDamage: 0, attacksToday: 0, lastAttackDate: null, ...(next.worldBoss || {}) };
+  if (next.worldBoss.lastAttackDate !== todayKey()) {
+    next.worldBoss.lastAttackDate = todayKey();
+    next.worldBoss.attacksToday = 0;
+  }
+  next.worldBoss.totalDamage = Math.max(0, Math.floor(Number(next.worldBoss.totalDamage) || 0));
+  next.worldBoss.attacksToday = Math.max(0, Math.floor(Number(next.worldBoss.attacksToday) || 0));
       return next;
     }, `Clasa a fost schimbată în ${classChoice} cu S-Coins.`);
   }
@@ -2195,6 +2350,8 @@ function TradeCenter({ game, setGame, session }) {
   const [priceGold, setPriceGold] = useState(250);
   const [priceDiamonds, setPriceDiamonds] = useState(0);
   const [status, setStatus] = useState("Trade Center folosește Supabase Marketplace.");
+  const [marketFilter, setMarketFilter] = useState("all");
+  const [sortMode, setSortMode] = useState("newest");
 
   async function loadMarketplace() {
     if (!supabase || !session) {
@@ -2332,6 +2489,13 @@ function TradeCenter({ game, setGame, session }) {
   }
 
   const selectedItem = game.inventory.find((item) => item.id === selectedItemId);
+  const visibleListings = listings
+    .filter((listing) => marketFilter === "all" || listing.item?.slot === marketFilter || listing.item?.rarity === marketFilter)
+    .sort((a, b) => {
+      if (sortMode === "power") return Number(b.item?.power || 0) - Number(a.item?.power || 0);
+      if (sortMode === "cheap") return (Number(a.price_gold || 0) + Number(a.price_diamonds || 0) * 1000) - (Number(b.price_gold || 0) + Number(b.price_diamonds || 0) * 1000);
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
   return (
     <section className="grid trade-layout">
@@ -2377,13 +2541,25 @@ function TradeCenter({ game, setGame, session }) {
       <div className="panel">
         <div className="section-title">
           <div>
-            <h2>Marketplace public</h2>
-            <p>Cumperi iteme puse la vânzare de alți jucători.</p>
+            <h2>Auction House avansat</h2>
+            <p>Cumperi iteme puse la vânzare de alți jucători, cu filtre și sortare.</p>
           </div>
           <div className="power-summary">🪙 {game.resources.gold} · 🔷 {game.resources.diamonds}</div>
         </div>
+        <div className="auction-controls">
+          <select value={marketFilter} onChange={(e) => setMarketFilter(e.target.value)}>
+            <option value="all">Toate</option>
+            {Object.entries(SLOTS).map(([slot, info]) => <option key={slot} value={slot}>{info.label}</option>)}
+            {Object.keys(RARITIES).map((rarity) => <option key={rarity} value={rarity}>{rarity}</option>)}
+          </select>
+          <select value={sortMode} onChange={(e) => setSortMode(e.target.value)}>
+            <option value="newest">Cele mai noi</option>
+            <option value="power">Power mare</option>
+            <option value="cheap">Cele mai ieftine</option>
+          </select>
+        </div>
         <div className="market-list">
-          {listings.length === 0 ? <div className="empty-inventory">Nu există iteme active la vânzare.</div> : listings.map((listing) => (
+          {visibleListings.length === 0 ? <div className="empty-inventory">Nu există iteme active la vânzare pentru filtrul ales.</div> : visibleListings.map((listing) => (
             <div className="market-row" key={listing.id}>
               <span>{SLOTS[listing.item.slot]?.emoji || "🎒"}</span>
               <div>
@@ -2425,6 +2601,8 @@ function Hero({ game }) {
           <div><b>Hero max</b><span>Level {MAX_HERO_LEVEL}</span></div>
           <div><b>Paragon max</b><span>{MAX_PARAGON_LEVEL}</span></div>
           <div><b>Energy rule</b><span>10 la level 1, +1 / level sau Paragon</span></div>
+          <div><b>VIP</b><span>{getVipData(game).label}</span></div>
+          <div><b>Title</b><span>{getTitleData(game).emoji} {getTitleData(game).label}</span></div>
         </div>
 
         <div className="grid two mini-stats">
@@ -2605,11 +2783,16 @@ function Arena({ game, setGame, session }) {
   }, [session]);
 
   const opponents = players.filter((player) => player.userId !== session?.user?.id);
+  const sameGuildOpponent = selectedOpponent && game.guild?.id && selectedOpponent.profile?.guildId === game.guild.id;
   const selectedOpponent = opponents.find((player) => player.userId === selectedId) || opponents[0];
 
   async function launchCityAttack() {
     if (!selectedOpponent || !session || !supabase) {
       setCityAttackStatus("Alege un jucător și intră cu contul Supabase.");
+      return;
+    }
+    if (sameGuildOpponent) {
+      setCityAttackStatus("Nu poți ataca orașul unui membru din aceeași alianță.");
       return;
     }
     setCityAttackStatus("Trimit atacul spre oraș...");
@@ -2632,6 +2815,10 @@ function Arena({ game, setGame, session }) {
   function startPvp() {
     if (!selectedOpponent) {
       setBattleLog(["Nu există încă adversari disponibili."]);
+      return;
+    }
+    if (sameGuildOpponent) {
+      setBattleLog(["Nu poți porni PvP contra unui membru din aceeași alianță."]);
       return;
     }
 
@@ -2711,8 +2898,9 @@ function Arena({ game, setGame, session }) {
             </div>
           )}
 
-          <button className="primary big" onClick={startPvp} disabled={!selectedOpponent}>Start PvP</button>
-          <button className="primary big city-attack-button" onClick={launchCityAttack} disabled={!selectedOpponent}>Trimite atac spre oraș · 10 min</button>
+          <button className="primary big" onClick={startPvp} disabled={!selectedOpponent || sameGuildOpponent}>Start PvP</button>
+          <button className="primary big city-attack-button" onClick={launchCityAttack} disabled={!selectedOpponent || sameGuildOpponent}>Trimite atac spre oraș · 10 min</button>
+          {sameGuildOpponent && <div className="notice warning">Membrii aceleiași alianțe nu se pot ataca.</div>}
           {cityAttackStatus && <div className="notice">{cityAttackStatus}</div>}
         </div>
 
@@ -2920,6 +3108,259 @@ function GuildPanel({ game, setGame, session }) {
             </div>
           ))}
           {guilds.length === 0 && <div className="empty-inventory">Nu există guild-uri încă.</div>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+function ProgressionPanel({ game, setGame }) {
+  const [status, setStatus] = useState("VIP, achievements și titles sunt salvate pe contul tău.");
+  const vip = getVipData(game);
+  const nextVip = game.vip.level < MAX_VIP_LEVEL ? VIP_LEVELS[game.vip.level] : null;
+  const unlockedTitles = getUnlockedTitles(game);
+
+  function upgradeVip() {
+    if (!nextVip) return;
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      const target = VIP_LEVELS[next.vip.level];
+      if (!target || next.resources.sCoins < target.cost) return next;
+      next.resources.sCoins -= target.cost;
+      next.vip.level += 1;
+      addMail(next, "VIP upgraded", `Ai activat ${target.label}.`, "vip");
+      return next;
+    });
+    setStatus("VIP upgrade aplicat.");
+  }
+
+  function claimAchievement(achievement) {
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      if (next.achievements.claimed.includes(achievement.id) || !achievement.check(next)) return next;
+      next = applyReward(next, achievement.reward);
+      next.achievements.claimed.push(achievement.id);
+      if (achievement.titleId && TITLES[achievement.titleId]) next.title = achievement.titleId;
+      addMail(next, "Achievement unlocked", `${achievement.title}: ${rewardText(achievement.reward)}.`, "achievement");
+      return next;
+    });
+    setStatus(`${achievement.title} revendicat.`);
+  }
+
+  function equipTitle(titleId) {
+    setGame((prev) => ({ ...normalizeGame(prev), title: titleId }));
+    setStatus(`Title echipat: ${TITLES[titleId].label}.`);
+  }
+
+  return (
+    <section className="grid progression-layout">
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>VIP System</h2>
+            <p>VIP se activează cu S-Coins și dă bonusuri permanente la resurse, XP, build speed și PvP.</p>
+          </div>
+          <div className="power-summary">⭐ {vip.label}</div>
+        </div>
+        <div className="level-rules">
+          <div><b>Resource bonus</b><span>+{vip.bonus.resource}%</span></div>
+          <div><b>XP bonus</b><span>+{vip.bonus.xp}%</span></div>
+          <div><b>Build speed</b><span>+{vip.bonus.build}%</span></div>
+          <div><b>PvP stats</b><span>+{vip.bonus.pvp}%</span></div>
+        </div>
+        {nextVip ? (
+          <button className="primary big" disabled={game.resources.sCoins < nextVip.cost} onClick={upgradeVip}>
+            Upgrade la {nextVip.label} · {nextVip.cost} S-Coins
+          </button>
+        ) : <div className="notice">VIP este la nivel maxim.</div>}
+        <div className="notice">{status}</div>
+      </div>
+
+      <div className="panel">
+        <h2>Titles</h2>
+        <p>Title-ul activ dă bonusuri permanente la erou.</p>
+        <div className="title-grid">
+          {unlockedTitles.map((titleId) => {
+            const title = TITLES[titleId];
+            return (
+              <button key={titleId} className={game.title === titleId ? "title-card active" : "title-card"} onClick={() => equipTitle(titleId)}>
+                <b>{title.emoji} {title.label}</b>
+                <small>HP +{title.bonus.hp} · ATK +{title.bonus.attack} · DEF +{title.bonus.defense} · Mana +{title.bonus.mana}</small>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="panel full-span">
+        <h2>Achievements</h2>
+        <div className="achievement-grid">
+          {ACHIEVEMENTS.map((achievement) => {
+            const claimed = game.achievements.claimed.includes(achievement.id);
+            const ready = achievement.check(game);
+            return (
+              <article className={claimed ? "achievement-card claimed" : "achievement-card"} key={achievement.id}>
+                <h3>{claimed ? "✅" : ready ? "🏆" : "🔒"} {achievement.title}</h3>
+                <p>{achievement.text}</p>
+                <small>Progress: {getAchievementProgressText(game, achievement)}</small>
+                <small>Reward: {rewardText(achievement.reward)} {achievement.titleId ? `· Title: ${TITLES[achievement.titleId]?.label}` : ""}</small>
+                <button disabled={!ready || claimed} onClick={() => claimAchievement(achievement)}>{claimed ? "Claimed" : ready ? "Claim" : "În progres"}</button>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GuildWarsPanel({ game, session }) {
+  const [guilds, setGuilds] = useState([]);
+  const [wars, setWars] = useState([]);
+  const [targetGuildId, setTargetGuildId] = useState("");
+  const [status, setStatus] = useState("Guild Wars are nevoie de alianță și Supabase.");
+
+  async function loadWars() {
+    if (!supabase || !session || !game.guild?.id) {
+      setStatus("Intră într-o alianță ca să vezi Guild Wars.");
+      return;
+    }
+    const guildResult = await supabase.rpc("get_guilds", { limit_count: 80 });
+    if (!guildResult.error) setGuilds((guildResult.data || []).filter((guild) => guild.id !== game.guild.id));
+    const { data, error } = await supabase.rpc("get_guild_wars");
+    if (error) {
+      setStatus(`Guild Wars indisponibil: ${error.message}. Rulează SQL-ul din Update 15.`);
+      return;
+    }
+    setWars(data || []);
+    setStatus("Guild Wars actualizat.");
+  }
+
+  useEffect(() => { loadWars(); }, [session?.user?.id, game.guild?.id]);
+
+  async function declareWar() {
+    if (!targetGuildId) {
+      setStatus("Alege o alianță adversă.");
+      return;
+    }
+    const { error } = await supabase.rpc("declare_guild_war", { target_guild_id: targetGuildId });
+    if (error) setStatus(`Nu pot declara war: ${error.message}`);
+    else {
+      setStatus("Guild War declarat pentru 24h.");
+      loadWars();
+    }
+  }
+
+  async function addWarScore() {
+    const { error } = await supabase.rpc("add_guild_war_score", { score_points: Math.max(25, Math.round(getCityAttackPower(game) / 50)) });
+    if (error) setStatus(`Nu pot adăuga scor: ${error.message}`);
+    else {
+      setStatus("Scor adăugat pentru alianța ta.");
+      loadWars();
+    }
+  }
+
+  return (
+    <section className="grid two guild-war-layout">
+      <div className="panel">
+        <h2>Guild Wars</h2>
+        <p>Declară război altei alianțe. War-ul ține 24h, iar scorul vine din acțiuni PvP/city/boss.</p>
+        <label>Alianță adversă</label>
+        <select value={targetGuildId} onChange={(e) => setTargetGuildId(e.target.value)}>
+          <option value="">Alege guild</option>
+          {guilds.map((guild) => <option key={guild.id} value={guild.id}>[{guild.tag}] {guild.name} · Power {guild.total_power}</option>)}
+        </select>
+        <button className="primary big" disabled={!game.guild?.id || !targetGuildId} onClick={declareWar}>Declară Guild War</button>
+        <button className="primary big" disabled={!game.guild?.id} onClick={addWarScore}>Adaugă scor din activitatea ta</button>
+        <div className="notice">{status}</div>
+      </div>
+
+      <div className="panel">
+        <div className="section-title"><h2>War Board</h2><button onClick={loadWars}>Refresh</button></div>
+        <div className="war-list">
+          {wars.length === 0 ? <div className="empty-inventory">Nu există war-uri active/recente.</div> : wars.map((war) => (
+            <div className="war-row" key={war.id}>
+              <b>[{war.attacker_tag}] {war.attacker_name} vs [{war.defender_tag}] {war.defender_name}</b>
+              <span>{war.attacker_score} - {war.defender_score} · {war.status} · final {formatDateTime(war.ends_at)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WorldBossPanel({ game, setGame, session }) {
+  const [boss, setBoss] = useState(null);
+  const [log, setLog] = useState("World Boss se încarcă...");
+
+  async function loadBoss() {
+    if (!supabase || !session) {
+      setLog("World Boss are nevoie de login Supabase.");
+      return;
+    }
+    const { data, error } = await supabase.rpc("get_world_boss");
+    if (error) {
+      setLog(`World Boss indisponibil: ${error.message}. Rulează SQL-ul din Update 15.`);
+      return;
+    }
+    setBoss(Array.isArray(data) ? data[0] : data);
+    setLog("World Boss actualizat.");
+  }
+
+  useEffect(() => { loadBoss(); }, [session?.user?.id]);
+
+  async function attackBoss() {
+    if (!boss || !supabase || !session) return;
+    if (game.resources.energy < 2) {
+      setLog("Ai nevoie de 2 energie pentru World Boss.");
+      return;
+    }
+    const stats = getHeroStats(game);
+    const guildBonus = game.guild?.id ? 1.15 : 1;
+    const damage = Math.max(50, Math.round((stats.attack * 24 + stats.power * 0.12) * guildBonus * (0.85 + Math.random() * 0.35)));
+    const { data, error } = await supabase.rpc("attack_world_boss", { damage_points: damage });
+    if (error) {
+      setLog(`Atac eșuat: ${error.message}`);
+      return;
+    }
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.resources.energy = Math.max(0, next.resources.energy - 2);
+      next.stats.worldBossDamage += damage;
+      next.worldBoss.totalDamage += damage;
+      next.worldBoss.attacksToday += 1;
+      if (next.guild?.id) next.stats.guildWarScore += Math.round(damage / 50);
+      if (Math.random() < 0.25 && next.inventory.length < 80) next.inventory.push(createItem(getProgressionLevel(next), "World Boss", 4));
+      return next;
+    });
+    setBoss(Array.isArray(data) ? data[0] : data);
+    setLog(`Ai lovit World Boss pentru ${damage} damage.${game.guild?.id ? " Bonus alianță activ." : ""}`);
+  }
+
+  const hp = Number(boss?.hp || WORLD_BOSS_CONFIG.maxHp);
+  const maxHp = Number(boss?.max_hp || WORLD_BOSS_CONFIG.maxHp);
+  const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+
+  return (
+    <section className="grid two world-boss-layout">
+      <div className="panel boss-panel">
+        <div className="big-emoji">{WORLD_BOSS_CONFIG.emoji}</div>
+        <h2>{WORLD_BOSS_CONFIG.name}</h2>
+        <p>{WORLD_BOSS_CONFIG.rewardPreview}</p>
+        <div className="progress-wrap"><div className="progress-label"><span>Boss HP</span><span>{hp}/{maxHp}</span></div><div className="progress"><div style={{ width: `${pct}%` }} /></div></div>
+        <button className="primary big" disabled={!boss || game.resources.energy < 2} onClick={attackBoss}>Atacă World Boss · 2 energie</button>
+        <button onClick={loadBoss}>Refresh</button>
+        <div className="notice">{log}</div>
+      </div>
+      <div className="panel">
+        <h2>Damage-ul tău</h2>
+        <div className="level-rules">
+          <div><b>Total damage</b><span>{game.stats.worldBossDamage || 0}</span></div>
+          <div><b>Atacuri azi</b><span>{game.worldBoss.attacksToday || 0}</span></div>
+          <div><b>Guild bonus</b><span>{game.guild?.id ? "+15% damage" : "Intră într-o alianță pentru bonus"}</span></div>
+          <div><b>Posibil drop</b><span>25% item după atac</span></div>
         </div>
       </div>
     </section>
@@ -3354,6 +3795,7 @@ function Game({ session }) {
       <nav className="tabs">
         <button className={tab === "city" ? "active" : ""} onClick={() => setTab("city")}>🏰 Oraș</button>
         <button className={tab === "daily" ? "active" : ""} onClick={() => setTab("daily")}>🎁 Daily</button>
+        <button className={tab === "progress" ? "active" : ""} onClick={() => setTab("progress")}>⭐ VIP</button>
         <button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>📩 Inbox</button>
         <button className={tab === "battle" ? "active" : ""} onClick={() => setTab("battle")}>💀 Luptă</button>
         <button className={tab === "world" ? "active" : ""} onClick={() => setTab("world")}>🗺️ World</button>
@@ -3364,6 +3806,8 @@ function Game({ session }) {
         <button className={tab === "companions" ? "active" : ""} onClick={() => setTab("companions")}>🐴 Companions</button>
         <button className={tab === "arena" ? "active" : ""} onClick={() => setTab("arena")}>🏆 Arena</button>
         <button className={tab === "guild" ? "active" : ""} onClick={() => setTab("guild")}>🛡️ Guild</button>
+        <button className={tab === "guildWars" ? "active" : ""} onClick={() => setTab("guildWars")}>⚔️ Guild Wars</button>
+        <button className={tab === "worldBoss" ? "active" : ""} onClick={() => setTab("worldBoss")}>🐉 World Boss</button>
         {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Questuri</button>
         <button className="danger-tab" onClick={resetSave}>Reset progres</button>
@@ -3371,6 +3815,7 @@ function Game({ session }) {
 
       {tab === "city" && <City game={game} setGame={setGame} session={session} />}
       {tab === "daily" && <DailyPanel game={game} setGame={setGame} />}
+      {tab === "progress" && <ProgressionPanel game={game} setGame={setGame} />}
       {tab === "inbox" && <Inbox game={game} setGame={setGame} session={session} />}
       {tab === "battle" && <Battle game={game} setGame={setGame} />}
       {tab === "world" && <Dungeon game={game} setGame={setGame} />}
@@ -3381,6 +3826,8 @@ function Game({ session }) {
       {tab === "companions" && <Companions game={game} setGame={setGame} />}
       {tab === "arena" && <Arena game={game} setGame={setGame} session={session} />}
       {tab === "guild" && <GuildPanel game={game} setGame={setGame} session={session} />}
+      {tab === "guildWars" && <GuildWarsPanel game={game} session={session} />}
+      {tab === "worldBoss" && <WorldBossPanel game={game} setGame={setGame} session={session} />}
       {tab === "admin" && isAdmin && <AdminPanel session={session} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>
