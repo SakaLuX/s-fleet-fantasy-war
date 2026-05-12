@@ -1,6 +1,6 @@
 -- S-Fleet Fantasy War ⚔️ — Update 15
--- Rulează tot scriptul în Supabase Dashboard > SQL Editor > New query > Run.
--- Păstrează salvările existente și adaugă VIP, Guild Wars, World Boss, Auction House și protecție anti-friendly-fire.
+-- Run the full script in Supabase Dashboard > SQL Editor > New query > Run.
+-- Keeps existing saves and adds VIP, Guild Wars, World Boss, Auction House and anti-friendly-fire protection.
 
 create table if not exists public.game_saves (
   id uuid primary key default gen_random_uuid(),
@@ -207,9 +207,9 @@ $$;
 grant execute on function public.claim_market_sales() to authenticated;
 
 -- S-Fleet Fantasy War ⚔️ — Update 10
--- Admin pe email, Guild / Alianță, City Attacks cu 10 minute travel time + Shield Protection.
+-- Admin pe email, Guild / Alliance, City Attacks cu 10 minute travel time + Shield Protection.
 
--- Admin users: adaugă manual emailul tău aici după ce rulezi scriptul:
+-- Admin users: manually add your email here after running the script:
 -- insert into public.admin_users(email) values ('EMAILUL_TAU') on conflict (email) do nothing;
 create table if not exists public.admin_users (
   email text primary key,
@@ -561,39 +561,314 @@ returns table (
   resolved_at timestamptz,
   result jsonb
 )
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
-  with due as (
-    select ca.*,
-      coalesce((d.public_profile->>'cityDefensePower')::int, ca.defense_power_at_launch) as current_defense,
-      coalesce((d.public_profile->>'wallLevel')::int, 1) as wall_level,
-      coalesce((d.public_profile->>'watchtowerLevel')::int, 1) as watchtower_level
+declare
+  rec record;
+  attacker_data jsonb;
+  defender_data jsonb;
+  attacker_profile jsonb;
+  defender_profile jsonb;
+
+  remaining int;
+  wall_before int;
+  wall_after int;
+  wall_defense int;
+  wall_loss int;
+  wall_breached boolean;
+
+  citadel_before int;
+  citadel_after int;
+  citadel_defense int;
+  citadel_breached boolean;
+
+  mine_before int;
+  mine_after int;
+  mine_defense int;
+  mine_breached boolean;
+
+  lumber_before int;
+  lumber_after int;
+  lumber_defense int;
+  lumber_breached boolean;
+
+  tower_level int;
+  defense_power int;
+  attacker_win boolean;
+  steal_gold int;
+  steal_wood int;
+  steal_crystals int;
+  steal_diamonds int;
+  gold_pct numeric := 0;
+  wood_pct numeric := 0;
+  crystals_pct numeric := 0;
+  diamonds_pct numeric := 0;
+
+  def_gold int;
+  def_wood int;
+  def_crystals int;
+  def_diamonds int;
+  def_scoins int;
+  atk_gold int;
+  atk_wood int;
+  atk_crystals int;
+  atk_diamonds int;
+  atk_scoins int;
+  res jsonb;
+  damage jsonb;
+  old_stat int;
+  new_result jsonb;
+begin
+  for rec in
+    select ca.*
     from public.city_attacks ca
-    left join public.game_saves d on d.user_id = ca.defender_id
     where ca.status = 'pending'
       and ca.lands_at <= now()
       and (ca.attacker_id = auth.uid() or ca.defender_id = auth.uid())
-  ), updated as (
+    order by ca.lands_at asc
+  loop
+    select data, public_profile into attacker_data, attacker_profile
+    from public.game_saves
+    where user_id = rec.attacker_id
+    for update;
+
+    select data, public_profile into defender_data, defender_profile
+    from public.game_saves
+    where user_id = rec.defender_id
+    for update;
+
+    if defender_data is null or attacker_data is null then
+      update public.city_attacks ca
+      set status = 'cancelled', resolved_at = now(), result = jsonb_build_object('cancelled', true, 'reason', 'Missing save data'), updated_at = now()
+      where ca.id = rec.id;
+      continue;
+    end if;
+
+    wall_before := greatest(1, coalesce(nullif(defender_data #>> '{buildings,wall,level}', '')::int, coalesce(nullif(defender_profile->>'wallLevel','')::int, 1)));
+    citadel_before := greatest(1, coalesce(nullif(defender_data #>> '{buildings,citadel,level}', '')::int, coalesce(nullif(defender_profile->>'citadelLevel','')::int, 1)));
+    mine_before := greatest(1, coalesce(nullif(defender_data #>> '{buildings,mine,level}', '')::int, coalesce(nullif(defender_profile->>'goldMineLevel','')::int, 1)));
+    lumber_before := greatest(1, coalesce(nullif(defender_data #>> '{buildings,lumber,level}', '')::int, coalesce(nullif(defender_profile->>'woodCollectorLevel','')::int, 1)));
+    tower_level := greatest(1, coalesce(nullif(defender_data #>> '{buildings,watchtower,level}', '')::int, coalesce(nullif(defender_profile->>'watchtowerLevel','')::int, 1)));
+
+    wall_after := wall_before;
+    citadel_after := citadel_before;
+    mine_after := mine_before;
+    lumber_after := lumber_before;
+    wall_breached := false;
+    citadel_breached := false;
+    mine_breached := false;
+    lumber_breached := false;
+
+    remaining := greatest(0, rec.attack_power);
+    wall_defense := greatest(120, wall_before * 520 + tower_level * 60);
+
+    if remaining > wall_defense then
+      wall_breached := true;
+      wall_after := 1;
+      remaining := remaining - wall_defense;
+    else
+      wall_loss := greatest(1, floor(wall_before * least(1.0, remaining::numeric / wall_defense::numeric))::int);
+      wall_after := greatest(1, wall_before - wall_loss);
+      remaining := 0;
+    end if;
+
+    if wall_breached and remaining > 0 then
+      citadel_defense := greatest(160, citadel_before * 410);
+      if remaining > citadel_defense then
+        citadel_breached := true;
+        citadel_after := 1;
+        remaining := remaining - citadel_defense;
+      else
+        citadel_after := greatest(1, citadel_before - greatest(1, floor(citadel_before * least(1.0, remaining::numeric / citadel_defense::numeric))::int));
+        remaining := 0;
+      end if;
+    end if;
+
+    if wall_breached and remaining > 0 then
+      mine_defense := greatest(120, mine_before * 310);
+      if remaining > mine_defense then
+        mine_breached := true;
+        mine_after := 1;
+        remaining := remaining - mine_defense;
+      else
+        mine_after := greatest(1, mine_before - greatest(1, floor(mine_before * least(1.0, remaining::numeric / mine_defense::numeric))::int));
+        remaining := 0;
+      end if;
+    end if;
+
+    if wall_breached and remaining > 0 then
+      lumber_defense := greatest(120, lumber_before * 310);
+      if remaining > lumber_defense then
+        lumber_breached := true;
+        lumber_after := 1;
+        remaining := remaining - lumber_defense;
+      else
+        lumber_after := greatest(1, lumber_before - greatest(1, floor(lumber_before * least(1.0, remaining::numeric / lumber_defense::numeric))::int));
+        remaining := 0;
+      end if;
+    end if;
+
+    attacker_win := wall_breached;
+
+    if wall_breached then
+      gold_pct := gold_pct + 0.03;
+      wood_pct := wood_pct + 0.03;
+      crystals_pct := crystals_pct + 0.01;
+    end if;
+    if citadel_breached then
+      gold_pct := gold_pct + 0.05;
+      wood_pct := wood_pct + 0.05;
+      crystals_pct := crystals_pct + 0.03;
+      diamonds_pct := diamonds_pct + 0.02;
+    end if;
+    if mine_breached then
+      gold_pct := gold_pct + 0.15;
+      crystals_pct := crystals_pct + 0.02;
+      diamonds_pct := diamonds_pct + 0.01;
+    end if;
+    if lumber_breached then
+      wood_pct := wood_pct + 0.15;
+      crystals_pct := crystals_pct + 0.02;
+      diamonds_pct := diamonds_pct + 0.01;
+    end if;
+
+    gold_pct := least(gold_pct, 0.35);
+    wood_pct := least(wood_pct, 0.35);
+    crystals_pct := least(crystals_pct, 0.18);
+    diamonds_pct := least(diamonds_pct, 0.08);
+
+    def_gold := greatest(0, coalesce(nullif(defender_data #>> '{resources,gold}', '')::int, 0));
+    def_wood := greatest(0, coalesce(nullif(defender_data #>> '{resources,wood}', '')::int, 0));
+    def_crystals := greatest(0, coalesce(nullif(defender_data #>> '{resources,crystals}', '')::int, 0));
+    def_diamonds := greatest(0, coalesce(nullif(defender_data #>> '{resources,diamonds}', '')::int, 0));
+    def_scoins := greatest(0, coalesce(nullif(defender_data #>> '{resources,sCoins}', '')::int, 0));
+
+    atk_gold := greatest(0, coalesce(nullif(attacker_data #>> '{resources,gold}', '')::int, 0));
+    atk_wood := greatest(0, coalesce(nullif(attacker_data #>> '{resources,wood}', '')::int, 0));
+    atk_crystals := greatest(0, coalesce(nullif(attacker_data #>> '{resources,crystals}', '')::int, 0));
+    atk_diamonds := greatest(0, coalesce(nullif(attacker_data #>> '{resources,diamonds}', '')::int, 0));
+    atk_scoins := greatest(0, coalesce(nullif(attacker_data #>> '{resources,sCoins}', '')::int, 0));
+
+    steal_gold := floor(def_gold * gold_pct)::int;
+    steal_wood := floor(def_wood * wood_pct)::int;
+    steal_crystals := floor(def_crystals * crystals_pct)::int;
+    steal_diamonds := floor(def_diamonds * diamonds_pct)::int;
+
+    -- Defender loses stolen resources, but S-Coins are protected forever.
+    res := coalesce(defender_data->'resources', '{}'::jsonb) || jsonb_build_object(
+      'gold', greatest(0, def_gold - steal_gold),
+      'wood', greatest(0, def_wood - steal_wood),
+      'crystals', greatest(0, def_crystals - steal_crystals),
+      'diamonds', greatest(0, def_diamonds - steal_diamonds),
+      'sCoins', def_scoins
+    );
+    defender_data := jsonb_set(defender_data, '{resources}', res, true);
+
+    defender_data := jsonb_set(
+      defender_data,
+      '{buildings}',
+      coalesce(defender_data->'buildings', '{}'::jsonb) || jsonb_build_object(
+        'wall', coalesce(defender_data #> '{buildings,wall}', '{}'::jsonb) || jsonb_build_object('level', wall_after),
+        'citadel', coalesce(defender_data #> '{buildings,citadel}', '{}'::jsonb) || jsonb_build_object('level', citadel_after),
+        'mine', coalesce(defender_data #> '{buildings,mine}', '{}'::jsonb) || jsonb_build_object('level', mine_after),
+        'lumber', coalesce(defender_data #> '{buildings,lumber}', '{}'::jsonb) || jsonb_build_object('level', lumber_after)
+      ),
+      true
+    );
+
+    old_stat := greatest(0, coalesce(nullif(defender_data #>> '{stats,cityDefenseWins}', '')::int, 0));
+    if attacker_win then
+      old_stat := greatest(0, coalesce(nullif(defender_data #>> '{stats,cityDefenseLosses}', '')::int, 0));
+      defender_data := jsonb_set(defender_data, '{stats}', coalesce(defender_data->'stats','{}'::jsonb) || jsonb_build_object('cityDefenseLosses', old_stat + 1), true);
+    else
+      defender_data := jsonb_set(defender_data, '{stats}', coalesce(defender_data->'stats','{}'::jsonb) || jsonb_build_object('cityDefenseWins', old_stat + 1), true);
+    end if;
+
+    -- Attacker gains only non-premium stolen resources.
+    res := coalesce(attacker_data->'resources', '{}'::jsonb) || jsonb_build_object(
+      'gold', atk_gold + steal_gold,
+      'wood', atk_wood + steal_wood,
+      'crystals', atk_crystals + steal_crystals,
+      'diamonds', atk_diamonds + steal_diamonds,
+      'sCoins', atk_scoins
+    );
+    attacker_data := jsonb_set(attacker_data, '{resources}', res, true);
+
+    if attacker_win then
+      old_stat := greatest(0, coalesce(nullif(attacker_data #>> '{stats,cityAttackWins}', '')::int, 0));
+      attacker_data := jsonb_set(attacker_data, '{stats}', coalesce(attacker_data->'stats','{}'::jsonb) || jsonb_build_object('cityAttackWins', old_stat + 1), true);
+    else
+      old_stat := greatest(0, coalesce(nullif(attacker_data #>> '{stats,cityAttackLosses}', '')::int, 0));
+      attacker_data := jsonb_set(attacker_data, '{stats}', coalesce(attacker_data->'stats','{}'::jsonb) || jsonb_build_object('cityAttackLosses', old_stat + 1), true);
+    end if;
+
+    defense_power := greatest(
+      50,
+      coalesce(nullif(defender_profile->>'power','')::int, 100) * 42 / 100 +
+      citadel_after * 135 +
+      wall_after * 520 +
+      tower_level * 95
+    );
+
+    damage := jsonb_build_object(
+      'wall', jsonb_build_object('from', wall_before, 'to', wall_after, 'breached', wall_breached),
+      'citadel', jsonb_build_object('from', citadel_before, 'to', citadel_after, 'breached', citadel_breached),
+      'goldMine', jsonb_build_object('from', mine_before, 'to', mine_after, 'breached', mine_breached),
+      'woodCollector', jsonb_build_object('from', lumber_before, 'to', lumber_after, 'breached', lumber_breached)
+    );
+
+    new_result := jsonb_build_object(
+      'attackerWin', attacker_win,
+      'attackPower', rec.attack_power,
+      'defensePower', defense_power,
+      'wallBefore', wall_before,
+      'wallAfter', wall_after,
+      'wallBreached', wall_breached,
+      'wallLevel', wall_after,
+      'watchtowerLevel', tower_level,
+      'buildingDamage', damage,
+      'stolen', jsonb_build_object('gold', steal_gold, 'wood', steal_wood, 'crystals', steal_crystals, 'diamonds', steal_diamonds, 'sCoins', 0),
+      'stealPercent', jsonb_build_object('gold', gold_pct, 'wood', wood_pct, 'crystals', crystals_pct, 'diamonds', diamonds_pct),
+      'sCoinsProtected', true
+    );
+
+    update public.game_saves
+    set data = attacker_data,
+        updated_at = now()
+    where user_id = rec.attacker_id;
+
+    update public.game_saves
+    set data = defender_data,
+        public_profile = coalesce(public_profile, '{}'::jsonb) || jsonb_build_object(
+          'citadelLevel', citadel_after,
+          'goldMineLevel', mine_after,
+          'woodCollectorLevel', lumber_after,
+          'wallLevel', wall_after,
+          'watchtowerLevel', tower_level,
+          'cityDefensePower', defense_power
+        ),
+        updated_at = now()
+    where user_id = rec.defender_id;
+
     update public.city_attacks ca
     set status = 'resolved',
         resolved_at = now(),
-        result = jsonb_build_object(
-          'attackerWin', due.attack_power > due.current_defense,
-          'attackPower', due.attack_power,
-          'defensePower', due.current_defense,
-          'wallLevel', due.wall_level,
-          'watchtowerLevel', due.watchtower_level
-        ),
+        result = new_result,
         updated_at = now()
-    from due
-    where ca.id = due.id
-    returning ca.*
-  )
-  select id, attacker_id, defender_id, attacker_name, defender_name, attack_power, defense_power_at_launch, status, lands_at, resolved_at, result
-  from updated
-  order by resolved_at desc;
+    where ca.id = rec.id;
+  end loop;
+
+  return query
+  select ca.id, ca.attacker_id, ca.defender_id, ca.attacker_name, ca.defender_name,
+         ca.attack_power, ca.defense_power_at_launch, ca.status, ca.lands_at, ca.resolved_at, ca.result
+  from public.city_attacks ca
+  where (ca.attacker_id = auth.uid() or ca.defender_id = auth.uid())
+    and ca.status = 'resolved'
+    and ca.resolved_at >= now() - interval '2 days'
+  order by ca.resolved_at desc;
+end;
 $$;
 
 grant execute on function public.resolve_due_city_attacks() to authenticated;
@@ -903,18 +1178,18 @@ security definer
 set search_path = public
 as $$
 declare
-  dmg int := greatest(1, least(damage_points, 250000));
+  dmg int := greatest(1, least(coalesce(damage_points, 1), 250000));
 begin
   perform public.reset_world_boss_if_needed();
 
-  update public.world_boss_state
-  set hp = greatest(0, hp - dmg),
+  update public.world_boss_state as boss
+  set hp = greatest(0, boss.hp - dmg),
       updated_at = now()
-  where id = 'current';
+  where boss.id = 'current';
 
   return query
   select wb.id, wb.name, wb.emoji, wb.hp, wb.max_hp, wb.starts_at, wb.ends_at
-  from public.world_boss_state wb
+  from public.world_boss_state as wb
   where wb.id = 'current';
 end;
 $$;

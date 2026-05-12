@@ -1,54 +1,45 @@
-# S-Fleet Fantasy War ⚔️ — Update 11-15 Bundle
+# S-Fleet Fantasy War ⚔️ — English Localization Update
 
-Acest pachet include toate update-urile cerute într-un singur deploy:
+This package translates the game interface to English and keeps all Update 16 systems intact.
 
-- Update 11: VIP + Achievements + Titles
-- Update 12: Guild Wars
-- Update 13: World Boss
-- Update 14: Auction House avansat
-- Update 15: Mobile UI polish + PWA app
-- Blocare atac/PvP între membri din aceeași alianță
-- Monștri mai puternici în funcție de nivel, uneori Elite/Strong peste nivelul tău
-- Buton **Cheamă aliat** în lupta normală, pentru ajutor de la alianță
+## Included systems
 
-## Foarte important
+- City raid damage system
+- Protection Wall damage rules
+- Citadel / Gold Mine / Wood Collector damage rules
+- Resource stealing based on breached structures
+- S-Coins are never stealable
+- Battle reports for city raids
+- VIP, achievements and titles
+- Guild Wars
+- World Boss
+- Advanced Auction House
+- Mobile/PWA files
 
-Rulează din nou `supabase/schema.sql` în Supabase SQL Editor. Scriptul este safe pentru datele existente și adaugă:
+## Important
 
-- `get_guild_members`
-- `guild_wars`
-- `declare_guild_war`
-- `get_guild_wars`
-- `add_guild_war_score`
-- `world_boss_state`
-- `get_world_boss`
-- `attack_world_boss`
-- protecție SQL: nu poți ataca un oraș din aceeași alianță
+The Supabase schema is included as `supabase/schema.sql`. If you have already run the Update 16 SQL, you do not need to run it again just for translation. Run it only if your Supabase database is missing the latest functions/tables.
 
-## Netlify
+## Deploy
 
-Build settings rămân la fel:
+Upload these files to the same GitHub repository, commit changes, and Netlify will deploy automatically.
+
+Build settings remain:
 
 ```txt
 Build command: npm run build
 Publish directory: dist
-Base directory: gol
-Functions directory: gol
+Base directory: empty
+Functions directory: empty
 ```
 
-Environment variables rămân:
+## Environment variables
+
+Keep the same Netlify variables:
 
 ```txt
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
 ```
 
-## PWA
-
-Pachetul include:
-
-- `manifest.webmanifest`
-- `sw.js`
-- `icon.svg`
-
-Pe telefon, site-ul poate fi adăugat pe ecranul principal din browser.
+Do not upload your database password, service role key, or secret key.
