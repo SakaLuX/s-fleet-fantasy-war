@@ -403,7 +403,7 @@ const DAILY_QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 15,
+    version: 40,
     playerName,
     className,
     level: 1,
@@ -416,6 +416,8 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
     title: "novice",
     worldBoss: { totalDamage: 0, attacksToday: 0, lastAttackDate: null },
     city: { lastResourceCollectionAt: null, shieldUntil: null },
+    settings: { sound: false, reduceMotion: false, compactMode: false, notifications: false },
+    update40: { tutorialRewardClaimed: false, lastOptimizedAt: null },
     daily: {
       date: todayKey(),
       login: { lastClaimedDate: null, streak: 0 },
@@ -573,7 +575,7 @@ function claimDailyQuestReward(game, questId) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 31;
+  next.version = 40;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -587,6 +589,8 @@ function normalizeGame(game) {
     ? 10
     : Math.max(0, Math.floor(Number.isFinite(parsedEnergy) ? parsedEnergy : 0));
   next.city = { lastResourceCollectionAt: null, shieldUntil: null, ...(next.city || {}) };
+  next.settings = { sound: false, reduceMotion: false, compactMode: false, notifications: false, ...(next.settings || {}) };
+  next.update40 = { tutorialRewardClaimed: false, lastOptimizedAt: null, ...(next.update40 || {}) };
   next.daily = normalizeDaily(next.daily);
   next.mail = Array.isArray(next.mail) ? next.mail.filter(Boolean).slice(0, 80) : [];
   next.guild = { id: null, name: null, tag: null, role: null, ...(next.guild || {}) };
@@ -1442,7 +1446,7 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 16 · City Raid System</div>
+        <div className="badge">Update 40 · Live RPG Bundle</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{getTitleData(game).emoji} {game.playerName} · {getProgressionLabel(game)} · {game.className} · {getTitleData(game).label}</p>
       </div>
@@ -4252,12 +4256,493 @@ function Update31SecurityPanel({ game, setGame, session, isAdmin }) {
   );
 }
 
+
+function playUiTone(enabled, type = "click") {
+  if (!enabled || typeof window === "undefined") return;
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const map = { click: 520, reward: 760, alert: 230, battle: 150 };
+    osc.frequency.value = map[type] || 440;
+    osc.type = type === "battle" ? "sawtooth" : "sine";
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
+  } catch {
+    // Sound is optional.
+  }
+}
+
+function Update40NotificationBar({ game, setTab, setGame }) {
+  const unread = unreadMailCount(game);
+  const shield = shieldRemaining(game);
+  const canClaimDaily = game.daily?.login?.lastClaimedDate !== todayKey();
+  const tips = [];
+  if (unread) tips.push(`${unread} unread message${unread === 1 ? "" : "s"}`);
+  if (canClaimDaily) tips.push("daily reward available");
+  if (game.resources.energy <= 0) tips.push("energy empty");
+  if (shield > 0) tips.push(`shield ${formatCountdown(shield)}`);
+
+  function enableNotifications() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.settings.notifications = true;
+      addMail(next, "Notifications enabled", "The Update 40 notification center is now active for this account.", "system");
+      return next;
+    });
+    if (typeof Notification !== "undefined" && Notification.permission === "default") Notification.requestPermission();
+  }
+
+  if (!tips.length) return null;
+  return (
+    <section className="update40-notification-bar">
+      <span>🔔 {tips.join(" · ")}</span>
+      <div>
+        <button onClick={() => setTab("inbox")}>Open inbox</button>
+        <button onClick={() => setTab("daily")}>Daily</button>
+        {!game.settings?.notifications && <button onClick={enableNotifications}>Enable alerts</button>}
+      </div>
+    </section>
+  );
+}
+
+function VisualsPanel({ game }) {
+  const stats = getHeroStats(game);
+  const regions = WORLD_ZONES.map((zone, index) => ({ ...zone, unlocked: getProgressionLevel(game) >= zone.minLevel, index }));
+  return (
+    <section className="grid two">
+      <div className="panel visual-panel premium-visual-panel">
+        <div className="section-title">
+          <div>
+            <h2>Update 32 · Visual City Pack</h2>
+            <p>A more game-like kingdom overview with layered fantasy scenery, district cards and quick status.</p>
+          </div>
+          <div className="power-summary">👑 {stats.power} Power</div>
+        </div>
+        <div className="visual-city-scene">
+          <div className="visual-moon">🌕</div>
+          <div className="visual-cloud cloud-a" />
+          <div className="visual-cloud cloud-b" />
+          <div className="visual-castle">🏰</div>
+          <div className="visual-wall">🧱🧱🧱🧱🧱</div>
+          <div className="visual-district district-a">⚔️ Barracks Lv. {game.buildings.barracks?.level || 1}</div>
+          <div className="visual-district district-b">⛏️ Mine Lv. {game.buildings.mine?.level || 1}</div>
+          <div className="visual-district district-c">🪵 Lumber Lv. {game.buildings.lumber?.level || 1}</div>
+          <div className="visual-district district-d">🔮 Academy Lv. {game.buildings.academy?.level || 1}</div>
+        </div>
+        <div className="visual-stats-grid">
+          <div><b>City Defense</b><span>{getCityDefensePower(game)}</span></div>
+          <div><b>Attack Power</b><span>{getCityAttackPower(game)}</span></div>
+          <div><b>Shield</b><span>{shieldRemaining(game) ? formatCountdown(shieldRemaining(game)) : "Inactive"}</span></div>
+        </div>
+      </div>
+      <div className="panel visual-panel">
+        <h2>Expanded World Visuals</h2>
+        <p>Regions now show as fantasy travel cards. Locked zones stay visible so players can see the long-term progression path.</p>
+        <div className="world-region-grid">
+          {regions.map((zone) => (
+            <div className={`world-region-card ${zone.unlocked ? "unlocked" : "locked"}`} key={zone.id}>
+              <div className="region-art">{zone.emoji}</div>
+              <div>
+                <h3>{zone.name}</h3>
+                <p>Level {zone.minLevel}+ · Energy {zone.energyCost} · Boss: {zone.boss.name}</p>
+                <small>{zone.unlocked ? "Unlocked" : `Unlock at level ${zone.minLevel}`}</small>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ChatPanel({ game, session }) {
+  const [channel, setChannel] = useState("global");
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState("");
+  const activeChannel = channel === "guild" && !game.guild?.id ? "global" : channel;
+
+  async function loadMessages() {
+    if (!hasSupabase || !session) {
+      setStatus("Chat requires Supabase login.");
+      return;
+    }
+    let query = supabase.from("game_chat_messages").select("*").order("created_at", { ascending: false }).limit(50);
+    if (activeChannel === "guild") query = query.eq("channel", "guild").eq("guild_id", game.guild.id);
+    else query = query.eq("channel", "global");
+    const { data, error } = await query;
+    if (error) setStatus(`Chat error: ${error.message}. Run Update 40 SQL.`);
+    else {
+      setMessages((data || []).reverse());
+      setStatus("Chat synced.");
+    }
+  }
+
+  useEffect(() => {
+    loadMessages();
+    const timer = window.setInterval(loadMessages, 12000);
+    return () => window.clearInterval(timer);
+  }, [activeChannel, game.guild?.id, session?.user?.id]);
+
+  async function sendMessage(e) {
+    e.preventDefault();
+    const clean = text.trim().slice(0, 500);
+    if (!clean || !hasSupabase || !session) return;
+    const { error } = await supabase.from("game_chat_messages").insert({
+      channel: activeChannel,
+      guild_id: activeChannel === "guild" ? game.guild.id : null,
+      sender_id: session.user.id,
+      sender_name: game.playerName,
+      message: clean
+    });
+    if (error) setStatus(`Send failed: ${error.message}.`);
+    else {
+      setText("");
+      await loadMessages();
+    }
+  }
+
+  return (
+    <section className="panel chat-panel">
+      <div className="section-title">
+        <div>
+          <h2>Update 33 · Multiplayer Chat</h2>
+          <p>Global chat and alliance chat with lightweight polling. Guild chat is available only after joining an alliance.</p>
+        </div>
+        <div className="segmented-actions">
+          <button className={activeChannel === "global" ? "active" : ""} onClick={() => setChannel("global")}>Global</button>
+          <button disabled={!game.guild?.id} className={activeChannel === "guild" ? "active" : ""} onClick={() => setChannel("guild")}>Guild</button>
+          <button onClick={loadMessages}>Refresh</button>
+        </div>
+      </div>
+      <div className="chat-log">
+        {messages.length === 0 ? <div className="empty-inventory">No messages yet.</div> : messages.map((msg) => (
+          <div className="chat-message" key={msg.id}>
+            <b>{msg.sender_name || "Hero"}</b>
+            <span>{msg.message}</span>
+            <small>{formatDateTime(msg.created_at)}</small>
+          </div>
+        ))}
+      </div>
+      <form className="chat-form" onSubmit={sendMessage}>
+        <input value={text} maxLength="500" onChange={(e) => setText(e.target.value)} placeholder="Write a message..." />
+        <button className="primary" type="submit">Send</button>
+      </form>
+      {status && <div className="notice">{status}</div>}
+    </section>
+  );
+}
+
+function NotificationsPanel({ game, setGame }) {
+  const [permission, setPermission] = useState(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
+
+  async function requestPermission() {
+    if (typeof Notification === "undefined") return;
+    const result = await Notification.requestPermission();
+    setPermission(result);
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.settings.notifications = result === "granted";
+      addMail(next, "Browser notifications", result === "granted" ? "Browser notifications are enabled." : "Browser notifications were not enabled.", "system");
+      return next;
+    });
+  }
+
+  function testAlert() {
+    playUiTone(game.settings?.sound, "alert");
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      new Notification("S-Fleet Fantasy War", { body: "Test notification from Update 34." });
+    }
+    setGame((prev) => addMail(normalizeGame(prev), "Test alert", "This is a local notification test.", "system"));
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <h2>Update 34 · Notification Center</h2>
+        <p>Tracks important events and prepares browser/PWA notifications for attacks, sales, guild events and rewards.</p>
+        <div className="visual-stats-grid">
+          <div><b>Browser permission</b><span>{permission}</span></div>
+          <div><b>Unread mail</b><span>{unreadMailCount(game)}</span></div>
+          <div><b>Sound</b><span>{game.settings?.sound ? "Enabled" : "Disabled"}</span></div>
+        </div>
+        <div className="actions stacked-actions">
+          <button className="primary" onClick={requestPermission}>Enable browser notifications</button>
+          <button onClick={testAlert}>Send test alert</button>
+        </div>
+      </div>
+      <div className="panel">
+        <h2>Recent Inbox Signals</h2>
+        <div className="market-list small-list">
+          {(game.mail || []).slice(0, 8).map((mail) => (
+            <div className="market-row" key={mail.id}>
+              <span>{mail.read ? "✉️" : "📩"}</span>
+              <div><b>{mail.title}</b><small>{formatDateTime(mail.createdAt)} · {mail.type}</small></div>
+            </div>
+          ))}
+          {(game.mail || []).length === 0 && <div className="empty-inventory">No inbox events yet.</div>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CoinRequestsPanel({ game, session, isAdmin }) {
+  const [amount, setAmount] = useState(50);
+  const [note, setNote] = useState("");
+  const [requests, setRequests] = useState([]);
+  const [status, setStatus] = useState("");
+
+  async function loadRequests() {
+    if (!hasSupabase || !session) return setStatus("S-Coin requests require Supabase login.");
+    let query = supabase.from("s_coin_requests").select("*").order("created_at", { ascending: false }).limit(isAdmin ? 100 : 30);
+    if (!isAdmin) query = query.eq("user_id", session.user.id);
+    const { data, error } = await query;
+    if (error) setStatus(`Request sync error: ${error.message}. Run Update 40 SQL.`);
+    else {
+      setRequests(data || []);
+      setStatus("Requests synced.");
+    }
+  }
+
+  useEffect(() => { loadRequests(); }, [session?.user?.id, isAdmin]);
+
+  async function submitRequest(e) {
+    e.preventDefault();
+    if (!hasSupabase || !session) return;
+    const cleanAmount = Math.max(1, Math.min(100000, Math.floor(Number(amount) || 0)));
+    const { error } = await supabase.from("s_coin_requests").insert({
+      user_id: session.user.id,
+      player_name: game.playerName,
+      amount: cleanAmount,
+      note: note.trim().slice(0, 600),
+      status: "pending"
+    });
+    if (error) setStatus(`Request failed: ${error.message}.`);
+    else {
+      setNote("");
+      setStatus("Request sent. Contact the creator to complete payment manually.");
+      await loadRequests();
+    }
+  }
+
+  async function adminUpdateRequest(req, newStatus) {
+    if (!isAdmin || !hasSupabase) return;
+    if (newStatus === "approved") {
+      const grant = await supabase.rpc("admin_grant_resource", { target_user_id: req.user_id, resource_key: "sCoins", amount_value: req.amount });
+      if (grant.error) {
+        setStatus(`Grant failed: ${grant.error.message}.`);
+        return;
+      }
+    }
+    const { error } = await supabase.from("s_coin_requests").update({ status: newStatus, reviewed_at: new Date().toISOString(), reviewed_by: session.user.email }).eq("id", req.id);
+    if (error) setStatus(`Status update failed: ${error.message}.`);
+    else {
+      setStatus(`Request ${newStatus}.`);
+      await loadRequests();
+    }
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <h2>Update 36 · Manual S-Coin Requests</h2>
+        <p>Players request S-Coins here. Payment remains manual: they contact the creator, then admin approves and grants coins server-side.</p>
+        <form className="form" onSubmit={submitRequest}>
+          <label>Requested S-Coins</label>
+          <input type="number" min="1" max="100000" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <label>Note / contact details</label>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Example: I contacted the creator on WhatsApp. Package 100 S-Coins." />
+          <button className="primary big" type="submit">Send S-Coin request</button>
+        </form>
+        {status && <div className="notice">{status}</div>}
+      </div>
+      <div className="panel">
+        <div className="section-title"><h2>{isAdmin ? "All S-Coin Requests" : "My Requests"}</h2><button onClick={loadRequests}>Refresh</button></div>
+        <div className="market-list small-list">
+          {requests.length === 0 ? <div className="empty-inventory">No requests.</div> : requests.map((req) => (
+            <div className="market-row request-row" key={req.id}>
+              <span>🪙</span>
+              <div><b>{req.player_name || "Player"} · {req.amount} S-Coins</b><small>{req.status} · {formatDateTime(req.created_at)} · {req.note || "No note"}</small></div>
+              {isAdmin && req.status === "pending" && <div className="row-actions"><button onClick={() => adminUpdateRequest(req, "approved")}>Approve</button><button className="danger" onClick={() => adminUpdateRequest(req, "rejected")}>Reject</button></div>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AdminDashboardPlus({ session }) {
+  const [players, setPlayers] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [status, setStatus] = useState("Not loaded");
+
+  async function load() {
+    if (!hasSupabase || !session) return;
+    const [playersRes, logsRes, reqRes] = await Promise.all([
+      supabase.rpc("get_public_players", { limit_count: 20 }),
+      supabase.rpc("admin_get_action_logs", { limit_count: 20 }).catch((error) => ({ error })),
+      supabase.from("s_coin_requests").select("*").order("created_at", { ascending: false }).limit(20)
+    ]);
+    if (playersRes.data) setPlayers(playersRes.data);
+    if (logsRes.data) setLogs(logsRes.data);
+    if (reqRes.data) setRequests(reqRes.data);
+    setStatus(playersRes.error || logsRes.error || reqRes.error ? "Some widgets need Update 40 SQL." : "Dashboard synced.");
+  }
+
+  useEffect(() => { load(); }, [session?.user?.id]);
+
+  return (
+    <section className="grid three">
+      <div className="panel admin-plus-card">
+        <div className="section-title"><h2>Update 35 · Admin Dashboard+</h2><button onClick={load}>Refresh</button></div>
+        <p>Operational dashboard for players, economy requests and admin action logs.</p>
+        <div className="visual-stats-grid">
+          <div><b>Players indexed</b><span>{players.length}</span></div>
+          <div><b>Coin requests</b><span>{requests.length}</span></div>
+          <div><b>Admin logs</b><span>{logs.length}</span></div>
+        </div>
+        <div className="notice">{status}</div>
+      </div>
+      <div className="panel"><h2>Top Players</h2><div className="market-list small-list">{players.map((p, i) => <div className="market-row" key={p.user_id}><span>#{i + 1}</span><div><b>{p.player_name}</b><small>Power {p.public_profile?.power || 0} · {p.class_name}</small></div></div>)}</div></div>
+      <div className="panel"><h2>Pending Economy</h2><div className="market-list small-list">{requests.map((r) => <div className="market-row" key={r.id}><span>🪙</span><div><b>{r.amount} S-Coins</b><small>{r.player_name} · {r.status}</small></div></div>)}</div></div>
+    </section>
+  );
+}
+
+function TutorialFlowPanel({ game, setGame }) {
+  const steps = [
+    { title: "Build your city", text: "Upgrade Citadel first. It controls how high the other buildings can grow.", tab: "City" },
+    { title: "Win battles", text: "Use skills, watch mana and call alliance help when monsters are too strong.", tab: "Battle" },
+    { title: "Equip gear", text: "Open Inventory and equip the strongest items before PvP.", tab: "Inventory" },
+    { title: "Join an alliance", text: "Alliance members can help in difficult battles and cannot be attacked by you.", tab: "Guild" },
+    { title: "Protect your city", text: "Use Shield, Wall and Observation Tower before sending raids.", tab: "City Defense" }
+  ];
+
+  function completeTutorial() {
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      if (!next.update40.tutorialRewardClaimed) {
+        next = applyReward(next, { gold: 750, wood: 500, crystals: 80, diamonds: 25, xp: 200 });
+        next.update40.tutorialRewardClaimed = true;
+        next.tutorial.done = true;
+        addMail(next, "Tutorial completed", "You received the Update 37 beginner reward.", "reward");
+      }
+      return next;
+    });
+  }
+
+  return (
+    <section className="panel tutorial-flow-panel">
+      <div className="section-title"><div><h2>Update 37 · Guided Tutorial Flow</h2><p>A clearer onboarding path for new players.</p></div><button className="primary" disabled={game.update40?.tutorialRewardClaimed} onClick={completeTutorial}>Claim tutorial reward</button></div>
+      <div className="tutorial-steps-grid">
+        {steps.map((step, index) => <div className="tutorial-step-card" key={step.title}><span>{index + 1}</span><h3>{step.title}</h3><p>{step.text}</p><small>Recommended tab: {step.tab}</small></div>)}
+      </div>
+    </section>
+  );
+}
+
+function SoundSettingsPanel({ game, setGame }) {
+  function updateSetting(key, value) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.settings[key] = value;
+      addMail(next, "Settings updated", `${key} set to ${value ? "on" : "off"}.`, "system");
+      return next;
+    });
+  }
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <h2>Update 38 · Sound & Accessibility</h2>
+        <p>Optional UI sounds, reduced motion and compact mode. Sounds only play after user interaction.</p>
+        <div className="setting-list">
+          <label><input type="checkbox" checked={Boolean(game.settings?.sound)} onChange={(e) => updateSetting("sound", e.target.checked)} /> Enable sounds</label>
+          <label><input type="checkbox" checked={Boolean(game.settings?.reduceMotion)} onChange={(e) => updateSetting("reduceMotion", e.target.checked)} /> Reduce animations</label>
+          <label><input type="checkbox" checked={Boolean(game.settings?.compactMode)} onChange={(e) => updateSetting("compactMode", e.target.checked)} /> Compact UI mode</label>
+        </div>
+        <div className="actions"><button onClick={() => playUiTone(game.settings?.sound, "click")}>Test click</button><button onClick={() => playUiTone(game.settings?.sound, "reward")}>Test reward</button><button onClick={() => playUiTone(game.settings?.sound, "battle")}>Test battle</button></div>
+      </div>
+      <div className="panel combat-animation-demo">
+        <h2>Update 39 · Combat Animation Lab</h2>
+        <div className="animated-duel">
+          <div className="duel-hero">🧙‍♂️<span>Hero</span></div>
+          <div className="duel-effects"><span>CRIT</span><span>BLOCK</span><span>DODGE</span></div>
+          <div className="duel-enemy">🐉<span>Boss</span></div>
+        </div>
+        <p>This visual layer is used as the animation direction for the battle screen: hit bursts, dodge/block labels and boss impact feedback.</p>
+      </div>
+    </section>
+  );
+}
+
+function PerformancePanel({ game, setGame }) {
+  const [status, setStatus] = useState("Ready");
+  const isStandalone = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+  function optimizeLocalSave() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.mail = (next.mail || []).slice(0, 50);
+      next.securityLogs = (next.securityLogs || []).slice(0, 50);
+      next.blacksmith.logs = (next.blacksmith.logs || []).slice(0, 30);
+      next.update40.lastOptimizedAt = new Date().toISOString();
+      addMail(next, "Performance optimization", "Old local logs were trimmed to keep the save lightweight.", "system");
+      return next;
+    });
+    setStatus("Local save optimized.");
+  }
+  async function clearAppCaches() {
+    if (typeof caches !== "undefined") {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+      setStatus(`Cleared ${keys.length} cache bucket(s).`);
+    } else setStatus("Cache API not available.");
+  }
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <h2>Update 40 · Production Optimization</h2>
+        <p>Tools for lighter saves, PWA checks, cache refresh and production readiness.</p>
+        <div className="visual-stats-grid">
+          <div><b>PWA mode</b><span>{isStandalone ? "Installed" : "Browser"}</span></div>
+          <div><b>Save version</b><span>{game.version}</span></div>
+          <div><b>Last optimized</b><span>{game.update40?.lastOptimizedAt ? formatDateTime(game.update40.lastOptimizedAt) : "Never"}</span></div>
+        </div>
+        <div className="actions stacked-actions"><button className="primary" onClick={optimizeLocalSave}>Optimize local save</button><button onClick={clearAppCaches}>Clear app cache</button></div>
+        <div className="notice">{status}</div>
+      </div>
+      <div className="panel">
+        <h2>Production Checklist</h2>
+        <ul className="checklist">
+          <li>✅ Supabase RLS enabled</li>
+          <li>✅ Admin grants server-side</li>
+          <li>✅ S-Coins never stolen in raids</li>
+          <li>✅ Friendly alliance attacks blocked</li>
+          <li>✅ PWA manifest + service worker included</li>
+          <li>✅ Recovery panel still catches UI crashes</li>
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 function Game({ session }) {
   const [game, setGame] = useState(null);
   const [tab, setTab] = useState("city");
   const [saveStatus, setSaveStatus] = useState("...");
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const shellClassName = `shell ${game?.settings?.compactMode ? "compact-ui" : ""} ${game?.settings?.reduceMotion ? "reduce-motion" : ""}`;
 
   useEffect(() => {
     async function checkAdmin() {
@@ -4370,12 +4855,16 @@ function Game({ session }) {
   }
 
   return (
-    <main className="shell">
+    <main className={shellClassName}>
       <TopBar game={game} session={session} onLogout={logout} saveStatus={saveStatus} />
       <Resources game={game} />
+      <Update40NotificationBar game={game} setTab={setTab} setGame={setGame} />
 
       <nav className="tabs">
         <button className={tab === "city" ? "active" : ""} onClick={() => setTab("city")}>🏰 City</button>
+        <button className={tab === "visuals" ? "active" : ""} onClick={() => setTab("visuals")}>✨ Visuals</button>
+        <button className={tab === "chat" ? "active" : ""} onClick={() => setTab("chat")}>💬 Chat</button>
+        <button className={tab === "notifications" ? "active" : ""} onClick={() => setTab("notifications")}>🔔 Alerts</button>
         <button className={tab === "daily" ? "active" : ""} onClick={() => setTab("daily")}>🎁 Daily</button>
         <button className={tab === "progress" ? "active" : ""} onClick={() => setTab("progress")}>⭐ VIP</button>
         <button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>📩 Inbox</button>
@@ -4385,6 +4874,7 @@ function Game({ session }) {
         <button className={tab === "season" ? "active" : ""} onClick={() => setTab("season")}>🎟️ Season</button>
         <button className={tab === "kingdomMap" ? "active" : ""} onClick={() => setTab("kingdomMap")}>🧭 Map</button>
         <button className={tab === "tutorial" ? "active" : ""} onClick={() => setTab("tutorial")}>🎮 Tutorial</button>
+        <button className={tab === "tutorialFlow" ? "active" : ""} onClick={() => setTab("tutorialFlow")}>🧭 Guide</button>
         <button className={tab === "world" ? "active" : ""} onClick={() => setTab("world")}>🗺️ World</button>
         <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>🎒 Inventory</button>
         <button className={tab === "shop" ? "active" : ""} onClick={() => setTab("shop")}>🛒 Shop</button>
@@ -4395,13 +4885,20 @@ function Game({ session }) {
         <button className={tab === "guild" ? "active" : ""} onClick={() => setTab("guild")}>🛡️ Guild</button>
         <button className={tab === "guildWars" ? "active" : ""} onClick={() => setTab("guildWars")}>⚔️ Guild Wars</button>
         <button className={tab === "worldBoss" ? "active" : ""} onClick={() => setTab("worldBoss")}>🐉 World Boss</button>
+        <button className={tab === "coinRequests" ? "active" : ""} onClick={() => setTab("coinRequests")}>🪙 Requests</button>
+        <button className={tab === "sound" ? "active" : ""} onClick={() => setTab("sound")}>🔊 Sound</button>
+        <button className={tab === "performance" ? "active" : ""} onClick={() => setTab("performance")}>🚀 Optimize</button>
         {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
+        {isAdmin && <button className={tab === "adminPlus" ? "active" : ""} onClick={() => setTab("adminPlus")}>📊 Admin+</button>}
         <button className={tab === "security" ? "active" : ""} onClick={() => setTab("security")}>🔒 Security</button>
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Quests</button>
         <button className="danger-tab" onClick={resetSave}>Reset progress</button>
       </nav>
 
       {tab === "city" && <City game={game} setGame={setGame} session={session} />}
+      {tab === "visuals" && <VisualsPanel game={game} />}
+      {tab === "chat" && <ChatPanel game={game} session={session} />}
+      {tab === "notifications" && <NotificationsPanel game={game} setGame={setGame} />}
       {tab === "daily" && <DailyPanel game={game} setGame={setGame} />}
       {tab === "progress" && <ProgressionPanel game={game} setGame={setGame} />}
       {tab === "inbox" && <Inbox game={game} setGame={setGame} session={session} />}
@@ -4411,6 +4908,7 @@ function Game({ session }) {
       {tab === "season" && <SeasonPanel game={game} setGame={setGame} />}
       {tab === "kingdomMap" && <KingdomMapPanel game={game} />}
       {tab === "tutorial" && <TutorialPanel game={game} setGame={setGame} />}
+      {tab === "tutorialFlow" && <TutorialFlowPanel game={game} setGame={setGame} />}
       {tab === "world" && <Dungeon game={game} setGame={setGame} />}
       {tab === "inventory" && <Inventory game={game} setGame={setGame} />}
       {tab === "shop" && <Shop game={game} setGame={setGame} />}
@@ -4421,7 +4919,11 @@ function Game({ session }) {
       {tab === "guild" && <GuildPanel game={game} setGame={setGame} session={session} />}
       {tab === "guildWars" && <GuildWarsPanel game={game} session={session} />}
       {tab === "worldBoss" && <WorldBossPanel game={game} setGame={setGame} session={session} />}
+      {tab === "coinRequests" && <CoinRequestsPanel game={game} session={session} isAdmin={isAdmin} />}
+      {tab === "sound" && <SoundSettingsPanel game={game} setGame={setGame} />}
+      {tab === "performance" && <PerformancePanel game={game} setGame={setGame} />}
       {tab === "admin" && isAdmin && <AdminPanel session={session} />}
+      {tab === "adminPlus" && isAdmin && <AdminDashboardPlus session={session} />}
       {tab === "security" && <Update31SecurityPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>

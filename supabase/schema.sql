@@ -1558,3 +1558,111 @@ end;
 $$;
 
 grant execute on function public.secure_claim_market_sales() to authenticated;
+
+-- S-Fleet Fantasy War ⚔️ — Update 32-40 Bundle
+-- Adds multiplayer chat, manual S-Coin requests and admin dashboard helpers.
+
+create table if not exists public.game_chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  channel text not null default 'global' check (channel in ('global', 'guild')),
+  guild_id uuid null,
+  sender_id uuid not null references auth.users(id) on delete cascade,
+  sender_name text not null default 'Hero',
+  message text not null check (char_length(message) between 1 and 500),
+  created_at timestamptz not null default now()
+);
+
+alter table public.game_chat_messages enable row level security;
+
+drop policy if exists "Players can read global and own guild chat" on public.game_chat_messages;
+create policy "Players can read global and own guild chat"
+on public.game_chat_messages
+for select
+to authenticated
+using (
+  channel = 'global'
+  or sender_id = auth.uid()
+  or exists (
+    select 1 from public.game_saves gs
+    where gs.user_id = auth.uid()
+      and (gs.data->'guild'->>'id')::uuid = game_chat_messages.guild_id
+  )
+);
+
+drop policy if exists "Players can insert own chat" on public.game_chat_messages;
+create policy "Players can insert own chat"
+on public.game_chat_messages
+for insert
+to authenticated
+with check (sender_id = auth.uid());
+
+create index if not exists game_chat_channel_created_idx on public.game_chat_messages(channel, created_at desc);
+create index if not exists game_chat_guild_created_idx on public.game_chat_messages(guild_id, created_at desc);
+grant select, insert on public.game_chat_messages to authenticated;
+
+create table if not exists public.s_coin_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  player_name text not null default 'Hero',
+  amount int not null check (amount > 0 and amount <= 100000),
+  note text not null default '',
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  reviewed_by text,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.s_coin_requests enable row level security;
+
+drop policy if exists "Players can read own coin requests" on public.s_coin_requests;
+create policy "Players can read own coin requests"
+on public.s_coin_requests
+for select
+to authenticated
+using (user_id = auth.uid() or public.is_current_user_admin());
+
+drop policy if exists "Players can create own coin requests" on public.s_coin_requests;
+create policy "Players can create own coin requests"
+on public.s_coin_requests
+for insert
+to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists "Admins can update coin requests" on public.s_coin_requests;
+create policy "Admins can update coin requests"
+on public.s_coin_requests
+for update
+to authenticated
+using (public.is_current_user_admin())
+with check (public.is_current_user_admin());
+
+create index if not exists s_coin_requests_status_idx on public.s_coin_requests(status, created_at desc);
+create index if not exists s_coin_requests_user_idx on public.s_coin_requests(user_id, created_at desc);
+grant select, insert, update on public.s_coin_requests to authenticated;
+
+create or replace function public.admin_dashboard_summary()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  if not public.is_current_user_admin() then
+    raise exception 'Only admins can read dashboard summary';
+  end if;
+
+  select jsonb_build_object(
+    'players', (select count(*) from public.game_saves),
+    'marketActive', (select count(*) from public.marketplace_listings where status = 'active'),
+    'coinRequestsPending', (select count(*) from public.s_coin_requests where status = 'pending'),
+    'chatMessages24h', (select count(*) from public.game_chat_messages where created_at > now() - interval '24 hours'),
+    'adminLogs24h', (select count(*) from public.admin_action_logs where created_at > now() - interval '24 hours')
+  ) into result;
+
+  return result;
+end;
+$$;
+
+grant execute on function public.admin_dashboard_summary() to authenticated;
