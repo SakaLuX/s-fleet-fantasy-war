@@ -1,6 +1,6 @@
--- S-Fleet Fantasy War ⚔️ — Update 7
+-- S-Fleet Fantasy War ⚔️ — Update 8
 -- Rulează tot scriptul în Supabase Dashboard > SQL Editor > New query > Run.
--- Păstrează salvările existente și adaugă profil public pentru Leaderboard + PvP.
+-- Păstrează salvările existente și adaugă Marketplace pentru item trading.
 
 create table if not exists public.game_saves (
   id uuid primary key default gen_random_uuid(),
@@ -90,3 +90,118 @@ as $$
 $$;
 
 grant execute on function public.get_public_players(int) to authenticated;
+
+-- Marketplace / item trading
+create table if not exists public.marketplace_listings (
+  id uuid primary key default gen_random_uuid(),
+  seller_id uuid not null references auth.users(id) on delete cascade,
+  seller_name text not null default 'Unknown Hero',
+  item jsonb not null,
+  price_gold int not null default 0 check (price_gold >= 0),
+  price_diamonds int not null default 0 check (price_diamonds >= 0),
+  status text not null default 'active' check (status in ('active', 'sold', 'cancelled')),
+  buyer_id uuid references auth.users(id) on delete set null,
+  proceeds_claimed boolean not null default false,
+  created_at timestamptz not null default now(),
+  sold_at timestamptz,
+  updated_at timestamptz not null default now(),
+  constraint marketplace_has_price check (price_gold > 0 or price_diamonds > 0)
+);
+
+alter table public.marketplace_listings enable row level security;
+
+drop trigger if exists set_marketplace_listings_updated_at on public.marketplace_listings;
+create trigger set_marketplace_listings_updated_at
+before update on public.marketplace_listings
+for each row
+execute function public.set_updated_at();
+
+drop policy if exists "Players can view marketplace" on public.marketplace_listings;
+create policy "Players can view marketplace"
+on public.marketplace_listings
+for select
+to authenticated
+using (status = 'active' or seller_id = auth.uid() or buyer_id = auth.uid());
+
+drop policy if exists "Players can create own listings" on public.marketplace_listings;
+create policy "Players can create own listings"
+on public.marketplace_listings
+for insert
+to authenticated
+with check (seller_id = auth.uid() and status = 'active');
+
+create index if not exists marketplace_active_idx on public.marketplace_listings(status, created_at desc);
+create index if not exists marketplace_seller_idx on public.marketplace_listings(seller_id, status);
+
+grant select, insert on public.marketplace_listings to authenticated;
+
+create or replace function public.buy_market_listing(listing_id uuid)
+returns table (
+  id uuid,
+  item jsonb,
+  price_gold int,
+  price_diamonds int,
+  seller_id uuid
+)
+language sql
+security definer
+set search_path = public
+as $$
+  update public.marketplace_listings ml
+  set status = 'sold',
+      buyer_id = auth.uid(),
+      sold_at = now(),
+      updated_at = now()
+  where ml.id = $1
+    and ml.status = 'active'
+    and ml.seller_id <> auth.uid()
+  returning ml.id, ml.item, ml.price_gold, ml.price_diamonds, ml.seller_id;
+$$;
+
+grant execute on function public.buy_market_listing(uuid) to authenticated;
+
+create or replace function public.cancel_market_listing(listing_id uuid)
+returns table (
+  id uuid,
+  item jsonb
+)
+language sql
+security definer
+set search_path = public
+as $$
+  update public.marketplace_listings ml
+  set status = 'cancelled', updated_at = now()
+  where ml.id = $1
+    and ml.status = 'active'
+    and ml.seller_id = auth.uid()
+  returning ml.id, ml.item;
+$$;
+
+grant execute on function public.cancel_market_listing(uuid) to authenticated;
+
+create or replace function public.claim_market_sales()
+returns table (
+  claimed_gold int,
+  claimed_diamonds int,
+  sales_count int
+)
+language sql
+security definer
+set search_path = public
+as $$
+  with updated as (
+    update public.marketplace_listings ml
+    set proceeds_claimed = true, updated_at = now()
+    where ml.seller_id = auth.uid()
+      and ml.status = 'sold'
+      and ml.proceeds_claimed = false
+    returning ml.price_gold, ml.price_diamonds
+  )
+  select
+    coalesce(sum(price_gold), 0)::int as claimed_gold,
+    coalesce(sum(price_diamonds), 0)::int as claimed_diamonds,
+    count(*)::int as sales_count
+  from updated;
+$$;
+
+grant execute on function public.claim_market_sales() to authenticated;

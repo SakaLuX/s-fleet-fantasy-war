@@ -1,70 +1,69 @@
-# S-Fleet Fantasy War ⚔️ — Update 7
+# S-Fleet Fantasy War ⚔️ — Update 8
 
-Update 7 adaugă:
+Update 8 adaugă:
 
-- fix pentru ecran negru: safe loader + error recovery panel
-- hartă vizuală în oraș, cu clădiri clickabile
-- Leaderboard după Power
-- PvP Arena simplu între jucători
-- profil public limitat pentru leaderboard/PvP
-- compatibilitate cu salvările vechi
+- Timer la construcții
+- Finalizare construcții cu S-Coins
+- Shop cu gold / diamonds / S-Coins
+- Schimbare clasă cu S-Coins
+- Energie instant cu S-Coins
+- Pachete resurse și chest-uri în shop
+- Paladin training limitat la nivelul eroului / Paragon
+- Trade Center / Marketplace între jucători
+- Vânzare iteme către marketplace
+- Cumpărare iteme de la alți jucători cu gold/diamonds
+- Colectare câștiguri din marketplace
 
-## Foarte important
+## Important Supabase
 
-Pentru Leaderboard și PvP trebuie rulat scriptul SQL actualizat:
+Pentru Trade Center / Marketplace trebuie rulat scriptul nou:
 
 ```txt
 supabase/schema.sql
 ```
 
-Acesta adaugă coloana `public_profile` și funcția `get_public_players()`.
-Nu șterge salvările existente.
-
-## Pași update
-
-1. Dezarhivează pachetul.
-2. Intră în GitHub repository-ul jocului.
-3. Înlocuiește fișierele cu cele din acest update.
-4. Commit changes.
-5. Netlify va face deploy automat.
-6. În Supabase > SQL Editor > New query, rulează tot scriptul din `supabase/schema.sql`.
-7. Intră în joc, fă o acțiune mică sau așteaptă salvarea automată.
-8. Intră la tabul `🏆 Arena`.
-
-## Dacă site-ul încă apare negru
-
-1. Verifică în GitHub să fie fișierele direct în root:
+Pași:
 
 ```txt
-package.json
-index.html
-src/App.jsx
-src/styles.css
-supabase/schema.sql
-netlify.toml
+Supabase
+→ SQL Editor
+→ New query
+→ lipești tot din supabase/schema.sql
+→ Run
 ```
 
-2. În Netlify verifică:
+Scriptul păstrează salvările existente și adaugă tabela:
+
+```txt
+marketplace_listings
+```
+
+## S-Coins
+
+S-Coins sunt moneda premium. În această versiune se adaugă manual de creator în Supabase, în salvarea jucătorului:
+
+```txt
+game_saves → data → resources → sCoins
+```
+
+Utilizări S-Coins:
+
+- schimbare clasă
+- energie instant
+- finalizare construcții
+- premium chest
+- redenumire erou
+
+## Deploy
+
+În GitHub înlocuiești fișierele vechi cu cele din acest ZIP și apeși Commit changes.
+Netlify face deploy automat.
+
+Build settings:
 
 ```txt
 Build command: npm run build
 Publish directory: dist
 Base directory: gol
+Functions directory: gol
 ```
-
-3. Trigger deploy manual:
-
-```txt
-Netlify > Deploys > Trigger deploy > Deploy site
-```
-
-## Supabase
-
-Variabilele rămân aceleași:
-
-```txt
-VITE_SUPABASE_URL
-VITE_SUPABASE_ANON_KEY
-```
-
-Nu pune parola bazei de date, `service_role` sau `secret key` în Netlify.

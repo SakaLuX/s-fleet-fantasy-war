@@ -9,7 +9,7 @@ const MAX_CITADEL_LEVEL = 50;
 const MAX_HERO_LEVEL = 100;
 const MAX_PARAGON_LEVEL = 250;
 
-const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v8";
+const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v9";
 
 const CLASSES = {
   Knight: {
@@ -256,14 +256,14 @@ const QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 8,
+    version: 9,
     playerName,
     className,
     level: 1,
     paragonLevel: 0,
     xp: 0,
     xpToNext: 100,
-    resources: { gold: 350, wood: 220, crystals: 45, energy: 10 },
+    resources: { gold: 350, wood: 220, crystals: 45, diamonds: 20, sCoins: 0, energy: 10 },
     city: { lastResourceCollectionAt: null },
     classLocked: true,
     buildings: {
@@ -291,13 +291,15 @@ function clone(value) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 8;
+  next.version = 9;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
-  next.resources = { gold: 0, wood: 0, crystals: 0, energy: 10, ...(next.resources || {}) };
+  next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
   next.resources.gold = Math.max(0, Math.floor(Number(next.resources.gold) || 0));
   next.resources.wood = Math.max(0, Math.floor(Number(next.resources.wood) || 0));
   next.resources.crystals = Math.max(0, Math.floor(Number(next.resources.crystals) || 0));
+  next.resources.diamonds = Math.max(0, Math.floor(Number(next.resources.diamonds) || 0));
+  next.resources.sCoins = Math.max(0, Math.floor(Number(next.resources.sCoins) || 0));
   next.resources.energy = Math.max(0, Math.floor(Number(next.resources.energy) || 10));
   next.city = { lastResourceCollectionAt: null, ...(next.city || {}) };
   next.level = Math.max(1, Math.min(MAX_HERO_LEVEL, Math.floor(Number(next.level) || 1)));
@@ -309,9 +311,20 @@ function normalizeGame(game) {
   const citadelLevel = Math.max(1, Math.min(MAX_CITADEL_LEVEL, Math.floor(Number(savedBuildings.citadel?.level) || 1)));
   next.buildings = {};
   Object.keys(BUILDINGS).forEach((key) => {
-    const rawLevel = Math.floor(Number(savedBuildings[key]?.level) || 1);
+    const saved = savedBuildings[key] || {};
+    const rawLevel = Math.floor(Number(saved.level) || 1);
     const cap = key === "citadel" ? MAX_CITADEL_LEVEL : citadelLevel;
-    next.buildings[key] = { level: Math.max(1, Math.min(cap, rawLevel)) };
+    const level = Math.max(1, Math.min(cap, rawLevel));
+    const building = { level };
+    const upgradingTo = Math.floor(Number(saved.upgradingTo) || 0);
+    const upgradeCompleteAt = saved.upgradeCompleteAt || null;
+    const upgradeStartedAt = saved.upgradeStartedAt || null;
+    if (upgradingTo > level && upgradeCompleteAt) {
+      building.upgradingTo = Math.min(key === "citadel" ? MAX_CITADEL_LEVEL : Math.max(cap, upgradingTo), upgradingTo);
+      building.upgradeCompleteAt = upgradeCompleteAt;
+      building.upgradeStartedAt = upgradeStartedAt;
+    }
+    next.buildings[key] = building;
   });
 
   next.inventory = Array.isArray(next.inventory) ? next.inventory.filter(Boolean).slice(0, 80) : [];
@@ -326,7 +339,8 @@ function normalizeGame(game) {
   if (!next.mounts.active || !next.mounts.owned.includes(next.mounts.active)) next.mounts.active = next.mounts.owned[0];
 
   next.paladin = { level: 1, xp: 0, xpToNext: 100, mode: "city", ...(next.paladin || {}) };
-  next.paladin.level = Math.max(1, Math.min(100, Math.floor(Number(next.paladin.level) || 1)));
+  const paladinMaxLevel = Math.max(1, getProgressionLevel(next));
+  next.paladin.level = Math.max(1, Math.min(paladinMaxLevel, Math.floor(Number(next.paladin.level) || 1)));
   next.paladin.xp = Math.max(0, Math.floor(Number(next.paladin.xp) || 0));
   next.paladin.xpToNext = Math.max(80, Math.floor(Number(next.paladin.xpToNext) || 100));
   next.paladin.mode = next.paladin.mode === "battle" ? "battle" : "city";
@@ -568,9 +582,98 @@ function getCollectionState(game, now = Date.now()) {
 
 function formatCountdown(ms) {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
   const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-  return `${minutes}:${seconds}`;
+  return hours > 0 ? `${hours}:${minutes}:${seconds}` : `${minutes}:${seconds}`;
+}
+
+function formatDuration(ms) {
+  const totalMinutes = Math.max(1, Math.ceil(ms / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes} min`;
+  if (minutes <= 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
+function getBuildDurationMs(game, key) {
+  const nextLevel = (game.buildings[key]?.level || 1) + 1;
+  const base = key === "citadel" ? 90000 : 60000;
+  const scaling = key === "citadel" ? 1.24 : 1.18;
+  return Math.min(12 * 3600000, Math.round(base * Math.pow(scaling, nextLevel - 1)));
+}
+
+function getBuildingTimer(game, key, now = Date.now()) {
+  const building = game.buildings?.[key];
+  if (!building?.upgradeCompleteAt) return { active: false, remainingMs: 0, progress: 0 };
+  const completeAt = new Date(building.upgradeCompleteAt).getTime();
+  const startedAt = building.upgradeStartedAt ? new Date(building.upgradeStartedAt).getTime() : now;
+  if (!completeAt || Number.isNaN(completeAt)) return { active: false, remainingMs: 0, progress: 0 };
+  const remainingMs = Math.max(0, completeAt - now);
+  const totalMs = Math.max(1, completeAt - startedAt);
+  const progress = Math.max(0, Math.min(100, ((now - startedAt) / totalMs) * 100));
+  return { active: remainingMs > 0, remainingMs, progress, completeAt, startedAt, targetLevel: building.upgradingTo || building.level + 1 };
+}
+
+function applyCompletedConstructions(game, now = Date.now()) {
+  const next = normalizeGame(game);
+  let changed = false;
+  Object.keys(BUILDINGS).forEach((key) => {
+    const building = next.buildings[key];
+    if (!building?.upgradeCompleteAt) return;
+    const completeAt = new Date(building.upgradeCompleteAt).getTime();
+    if (!completeAt || Number.isNaN(completeAt)) {
+      delete building.upgradingTo;
+      delete building.upgradeStartedAt;
+      delete building.upgradeCompleteAt;
+      changed = true;
+      return;
+    }
+    if (completeAt <= now) {
+      const maxLevel = getBuildingMaxLevel(next, key);
+      building.level = Math.min(maxLevel, Math.max(building.level + 1, building.upgradingTo || building.level + 1));
+      delete building.upgradingTo;
+      delete building.upgradeStartedAt;
+      delete building.upgradeCompleteAt;
+      changed = true;
+    }
+  });
+  return { game: next, changed };
+}
+
+function startBuildingUpgrade(game, key, now = Date.now()) {
+  const next = applyCompletedConstructions(game, now).game;
+  const status = getBuildingUpgradeStatus(next, key, now);
+  if (!status.can) return next;
+  const cost = getBuildingCost(next, key);
+  const durationMs = getBuildDurationMs(next, key);
+  next.resources.gold -= cost.gold;
+  next.resources.wood -= cost.wood;
+  next.resources.crystals -= cost.crystals;
+  next.buildings[key].upgradingTo = next.buildings[key].level + 1;
+  next.buildings[key].upgradeStartedAt = new Date(now).toISOString();
+  next.buildings[key].upgradeCompleteAt = new Date(now + durationMs).toISOString();
+  return next;
+}
+
+function getFinishConstructionCoinCost(game, key, now = Date.now()) {
+  const timer = getBuildingTimer(game, key, now);
+  if (!timer.active) return 0;
+  return Math.max(1, Math.ceil(timer.remainingMs / 600000));
+}
+
+function finishConstructionWithCoins(game, key, now = Date.now()) {
+  const next = normalizeGame(game);
+  const cost = getFinishConstructionCoinCost(next, key, now);
+  if (!cost || next.resources.sCoins < cost) return next;
+  next.resources.sCoins -= cost;
+  const building = next.buildings[key];
+  building.level = Math.min(getBuildingMaxLevel(next, key), building.upgradingTo || building.level + 1);
+  delete building.upgradingTo;
+  delete building.upgradeStartedAt;
+  delete building.upgradeCompleteAt;
+  return next;
 }
 
 function applyHourlyCollection(game, now = Date.now()) {
@@ -603,6 +706,8 @@ function applyReward(game, reward) {
   next.resources.gold += reward.gold || 0;
   next.resources.wood += reward.wood || 0;
   next.resources.crystals += reward.crystals || 0;
+  next.resources.diamonds += reward.diamonds || 0;
+  next.resources.sCoins += reward.sCoins || 0;
   next.xp += reward.xp || 0;
 
   while (next.xp >= next.xpToNext) {
@@ -629,13 +734,14 @@ function applyReward(game, reward) {
 function addPaladinXp(game, amount) {
   const next = normalizeGame(game);
   const paladin = next.paladin;
+  const maxPaladinLevel = Math.max(1, getProgressionLevel(next));
   paladin.xp += amount;
-  while (paladin.xp >= paladin.xpToNext && paladin.level < 100) {
+  while (paladin.xp >= paladin.xpToNext && paladin.level < maxPaladinLevel) {
     paladin.xp -= paladin.xpToNext;
     paladin.level += 1;
     paladin.xpToNext = Math.round(paladin.xpToNext * 1.22);
   }
-  if (paladin.level >= 100) paladin.xp = Math.min(paladin.xp, paladin.xpToNext);
+  if (paladin.level >= maxPaladinLevel) paladin.xp = Math.min(paladin.xp, paladin.xpToNext);
   return next;
 }
 
@@ -650,7 +756,32 @@ function getBuildingCost(game, key) {
 }
 
 function canAfford(resources, cost) {
-  return resources.gold >= cost.gold && resources.wood >= cost.wood && resources.crystals >= cost.crystals;
+  return (resources.gold || 0) >= (cost.gold || 0)
+    && (resources.wood || 0) >= (cost.wood || 0)
+    && (resources.crystals || 0) >= (cost.crystals || 0)
+    && (resources.diamonds || 0) >= (cost.diamonds || 0)
+    && (resources.sCoins || 0) >= (cost.sCoins || 0);
+}
+
+function payCost(game, cost) {
+  const next = normalizeGame(game);
+  if (!canAfford(next.resources, cost)) return { game: next, paid: false };
+  next.resources.gold -= cost.gold || 0;
+  next.resources.wood -= cost.wood || 0;
+  next.resources.crystals -= cost.crystals || 0;
+  next.resources.diamonds -= cost.diamonds || 0;
+  next.resources.sCoins -= cost.sCoins || 0;
+  return { game: next, paid: true };
+}
+
+function costText(cost) {
+  const parts = [];
+  if (cost.gold) parts.push(`${cost.gold} gold`);
+  if (cost.wood) parts.push(`${cost.wood} wood`);
+  if (cost.crystals) parts.push(`${cost.crystals} crystals`);
+  if (cost.diamonds) parts.push(`${cost.diamonds} diamonds`);
+  if (cost.sCoins) parts.push(`${cost.sCoins} S-Coins`);
+  return parts.join(" · ") || "Free";
 }
 
 function getBuildingMaxLevel(game, key) {
@@ -658,9 +789,11 @@ function getBuildingMaxLevel(game, key) {
   return Math.max(1, game.buildings.citadel.level);
 }
 
-function getBuildingUpgradeStatus(game, key) {
+function getBuildingUpgradeStatus(game, key, now = Date.now()) {
   const level = game.buildings[key].level;
   const maxLevel = getBuildingMaxLevel(game, key);
+  const timer = getBuildingTimer(game, key, now);
+  if (timer.active) return { can: false, reason: `În construcție ${formatCountdown(timer.remainingMs)}`, maxLevel, timer };
 
   if (level >= maxLevel) {
     const reason = key === "citadel" ? `Max Lv. ${MAX_CITADEL_LEVEL}` : `Cere Citadel Lv. ${level + 1}`;
@@ -672,7 +805,7 @@ function getBuildingUpgradeStatus(game, key) {
     return { can: false, reason: "Resurse insuficiente", maxLevel };
   }
 
-  return { can: true, reason: "Upgrade", maxLevel };
+  return { can: true, reason: "Upgrade", maxLevel, timer: null };
 }
 
 function scaleEnemy(enemy, level, extraScale = 1) {
@@ -885,7 +1018,7 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 7 · Map / Leaderboard / PvP</div>
+        <div className="badge">Update 8 · Build Timers / Shop / Trade</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{game.playerName} · {getProgressionLabel(game)} · {game.className}</p>
       </div>
@@ -894,6 +1027,7 @@ function TopBar({ game, session, onLogout, saveStatus }) {
         <div className="stat-box">👑 <b>{stats.power}</b><span>Power</span></div>
         <div className="stat-box">🏆 <b>{game.stats.wins}</b><span>Wins</span></div>
         <div className="stat-box">🎒 <b>{totalItemCount(game)}</b><span>Items</span></div>
+        <div className="stat-box">🪙 <b>{game.resources.sCoins}</b><span>S-Coins</span></div>
         <div className="stat-box">💾 <b>{saveStatus}</b><span>Save</span></div>
         {session && <button className="danger" onClick={onLogout}>Logout</button>}
       </div>
@@ -909,6 +1043,8 @@ function Resources({ game }) {
       <div className="resource">🪙 <span>Gold</span><b>{game.resources.gold}</b></div>
       <div className="resource">🪵 <span>Wood</span><b>{game.resources.wood}</b></div>
       <div className="resource">💎 <span>Crystals</span><b>{game.resources.crystals}</b></div>
+      <div className="resource">🔷 <span>Diamonds</span><b>{game.resources.diamonds}</b></div>
+      <div className="resource">🪙 <span>S-Coins</span><b>{game.resources.sCoins}</b></div>
       <div className="resource">⚡ <span>Energy</span><b>{game.resources.energy}/{maxEnergy}</b></div>
     </section>
   );
@@ -970,14 +1106,22 @@ function CityVisualMap({ game, onUpgrade }) {
 
 function City({ game, setGame }) {
   const [now, setNow] = useState(Date.now());
-  const collectionState = getCollectionState(game, now);
-  const hourlyIncome = getHourlyIncome(game);
-  const maxEnergy = getMaxEnergy(game);
+  const normalizedGame = applyCompletedConstructions(game, now).game;
+  const collectionState = getCollectionState(normalizedGame, now);
+  const hourlyIncome = getHourlyIncome(normalizedGame);
+  const maxEnergy = getMaxEnergy(normalizedGame);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    const timer = window.setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      setGame((prev) => {
+        const result = applyCompletedConstructions(prev, current);
+        return result.changed ? result.game : prev;
+      });
+    }, 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [setGame]);
 
   function collect() {
     setGame((prev) => applyHourlyCollection(prev, Date.now()).game);
@@ -985,17 +1129,12 @@ function City({ game, setGame }) {
   }
 
   function upgrade(key) {
-    setGame((prev) => {
-      const status = getBuildingUpgradeStatus(prev, key);
-      if (!status.can) return prev;
-      const cost = getBuildingCost(prev, key);
-      const next = clone(prev);
-      next.resources.gold -= cost.gold;
-      next.resources.wood -= cost.wood;
-      next.resources.crystals -= cost.crystals;
-      next.buildings[key].level += 1;
-      return next;
-    });
+    setGame((prev) => startBuildingUpgrade(prev, key, Date.now()));
+  }
+
+  function finishNow(key) {
+    setGame((prev) => finishConstructionWithCoins(prev, key, Date.now()));
+    setNow(Date.now());
   }
 
   return (
@@ -1003,7 +1142,7 @@ function City({ game, setGame }) {
       <div className="section-title">
         <div>
           <h2>Orașul tău</h2>
-          <p>Colectarea merge o singură dată pe oră. Paladinul în modul oraș adaugă producție și protecție.</p>
+          <p>Clădirile au timer de construcție. Poți finaliza instant cu S-Coins sau poți aștepta timerul.</p>
         </div>
         <button className="primary" disabled={!collectionState.ready} onClick={collect}>
           {collectionState.ready ? "Colectează resurse" : `Disponibil în ${formatCountdown(collectionState.remainingMs)}`}
@@ -1014,24 +1153,37 @@ function City({ game, setGame }) {
         <div><b>Producție / oră</b><span>{hourlyIncome.gold} gold · {hourlyIncome.wood} wood · {hourlyIncome.crystals} crystals</span></div>
         <div><b>Ore pregătite</b><span>{collectionState.ready ? collectionState.hours : 0}h</span></div>
         <div><b>Energie la colectare</b><span>se umple la maxim: {maxEnergy}</span></div>
-        <div><b>Protecție Paladin</b><span>{getPaladinCityBonus(game).defensePower} city power</span></div>
+        <div><b>Protecție Paladin</b><span>{getPaladinCityBonus(normalizedGame).defensePower} city power</span></div>
       </div>
 
-      <CityVisualMap game={game} onUpgrade={upgrade} />
+      <CityVisualMap game={normalizedGame} onUpgrade={upgrade} />
 
       <div className="grid four">
         {Object.entries(BUILDINGS).map(([key, building]) => {
-          const cost = getBuildingCost(game, key);
-          const level = game.buildings[key].level;
-          const status = getBuildingUpgradeStatus(game, key);
+          const cost = getBuildingCost(normalizedGame, key);
+          const level = normalizedGame.buildings[key].level;
+          const status = getBuildingUpgradeStatus(normalizedGame, key, now);
+          const timer = getBuildingTimer(normalizedGame, key, now);
+          const finishCost = getFinishConstructionCoinCost(normalizedGame, key, now);
+          const duration = getBuildDurationMs(normalizedGame, key);
           const maxText = key === "citadel" ? `Max Lv. ${MAX_CITADEL_LEVEL}` : `Max permis: Lv. ${status.maxLevel} după Citadel`;
           return (
             <article className="building" key={key}>
               <div className="building-top"><span>{building.emoji}</span><b>Lv. {level}</b></div>
               <h3>{building.name}</h3>
               <p>{building.description}</p>
-              <small>{level >= status.maxLevel ? maxText : `Cost: ${cost.gold} gold · ${cost.wood} wood · ${cost.crystals} crystals`}</small>
-              <button disabled={!status.can} onClick={() => upgrade(key)}>{status.reason}</button>
+              {timer.active ? (
+                <div className="build-timer-box">
+                  <small>Se construiește Lv. {timer.targetLevel} · rămas {formatCountdown(timer.remainingMs)}</small>
+                  <div className="build-progress"><div style={{ width: `${timer.progress}%` }} /></div>
+                  <button className="premium-mini" disabled={normalizedGame.resources.sCoins < finishCost} onClick={() => finishNow(key)}>
+                    Finalizează acum · {finishCost} S-Coin
+                  </button>
+                </div>
+              ) : (
+                <small>{level >= status.maxLevel ? maxText : `Cost: ${costText(cost)} · timp ${formatDuration(duration)}`}</small>
+              )}
+              {!timer.active && <button disabled={!status.can} onClick={() => upgrade(key)}>{status.reason}</button>}
             </article>
           );
         })}
@@ -1573,6 +1725,371 @@ function Inventory({ game, setGame }) {
   );
 }
 
+function Shop({ game, setGame }) {
+  const [classChoice, setClassChoice] = useState(game.className);
+  const [renameValue, setRenameValue] = useState(game.playerName);
+  const [message, setMessage] = useState("S-Coins se adaugă manual de creator după contact/plată.");
+
+  function buy(cost, action, successText) {
+    setGame((prev) => {
+      const paid = payCost(prev, cost);
+      if (!paid.paid) {
+        setMessage(`Resurse insuficiente: ${costText(cost)}`);
+        return paid.game;
+      }
+      const next = action(paid.game);
+      setMessage(successText);
+      return normalizeGame(next);
+    });
+  }
+
+  function buyEnergyWithDiamonds() {
+    buy({ diamonds: 12 }, (next) => {
+      next.resources.energy = Math.min(getMaxEnergy(next), next.resources.energy + 10);
+      return next;
+    }, "Ai cumpărat +10 energie cu diamonds.");
+  }
+
+  function refillEnergyWithCoins() {
+    buy({ sCoins: 1 }, (next) => {
+      next.resources.energy = getMaxEnergy(next);
+      return next;
+    }, "Energia a fost umplută instant cu S-Coin.");
+  }
+
+  function buyChest(type) {
+    const config = type === "epic"
+      ? { cost: { diamonds: 35 }, boost: 2, text: "Epic chest cumpărat cu diamonds." }
+      : { cost: { sCoins: 4 }, boost: 4, text: "Premium chest cumpărat cu S-Coins." };
+    buy(config.cost, (next) => {
+      if (next.inventory.length >= 60) {
+        next.resources.gold += 250;
+        return next;
+      }
+      const item = createItem(getProgressionLevel(next), type === "epic" ? "Diamond Chest" : "S-Coin Premium Chest", config.boost);
+      next.inventory.push(item);
+      next.stats.itemsFound += 1;
+      return next;
+    }, config.text);
+  }
+
+  function buyResourcePack() {
+    buy({ diamonds: 18 }, (next) => {
+      next.resources.gold += 1500;
+      next.resources.wood += 900;
+      next.resources.crystals += 90;
+      return next;
+    }, "Ai cumpărat pachet de resurse cu diamonds.");
+  }
+
+  function changeClass() {
+    if (classChoice === game.className) {
+      setMessage("Alege o clasă diferită pentru schimbare.");
+      return;
+    }
+    buy({ sCoins: 10 }, (next) => {
+      next.className = classChoice;
+      next.classLocked = true;
+      return next;
+    }, `Clasa a fost schimbată în ${classChoice} cu S-Coins.`);
+  }
+
+  function renameHero() {
+    const clean = renameValue.trim().slice(0, 28);
+    if (!clean) {
+      setMessage("Numele nu poate fi gol.");
+      return;
+    }
+    buy({ sCoins: 2 }, (next) => {
+      next.playerName = clean;
+      return next;
+    }, "Numele eroului a fost schimbat.");
+  }
+
+  return (
+    <section className="grid shop-layout">
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Shop</h2>
+            <p>Cumperi pachete cu gold/diamonds sau folosești S-Coins pentru funcții premium.</p>
+          </div>
+          <div className="power-summary">🔷 {game.resources.diamonds} diamonds · 🪙 {game.resources.sCoins} S-Coins</div>
+        </div>
+
+        <div className="shop-grid">
+          <article className="shop-card">
+            <h3>⚡ Energy Boost</h3>
+            <p>Primești +10 energie, fără să aștepți colectarea.</p>
+            <button onClick={buyEnergyWithDiamonds} disabled={!canAfford(game.resources, { diamonds: 12 })}>Cumpără · 12 diamonds</button>
+          </article>
+          <article className="shop-card premium">
+            <h3>⚡ Full Energy</h3>
+            <p>Umple energia instant la maximul caracterului.</p>
+            <button onClick={refillEnergyWithCoins} disabled={!canAfford(game.resources, { sCoins: 1 })}>Cumpără · 1 S-Coin</button>
+          </article>
+          <article className="shop-card">
+            <h3>🎁 Resource Pack</h3>
+            <p>+1500 gold, +900 wood, +90 crystals.</p>
+            <button onClick={buyResourcePack} disabled={!canAfford(game.resources, { diamonds: 18 })}>Cumpără · 18 diamonds</button>
+          </article>
+          <article className="shop-card">
+            <h3>💎 Epic Chest</h3>
+            <p>Item cu șansă mai bună la Rare/Epic.</p>
+            <button onClick={() => buyChest("epic")} disabled={!canAfford(game.resources, { diamonds: 35 })}>Cumpără · 35 diamonds</button>
+          </article>
+          <article className="shop-card premium">
+            <h3>🏆 Premium Chest</h3>
+            <p>Item cu rarity boost mare, inclusiv șansă mai bună la Legendary.</p>
+            <button onClick={() => buyChest("premium")} disabled={!canAfford(game.resources, { sCoins: 4 })}>Cumpără · 4 S-Coins</button>
+          </article>
+        </div>
+      </div>
+
+      <div className="panel">
+        <h2>S-Coin Premium</h2>
+        <p>S-Coin se cumpără doar prin contactarea creatorului jocului. Creatorul adaugă manual coinurile în cont după confirmare.</p>
+        <div className="level-rules">
+          <div><b>Schimbă clasa</b><span>10 S-Coins · păstrezi progresul, itemele și orașul</span></div>
+          <div><b>Energie instant</b><span>1 S-Coin · umple energia la maxim</span></div>
+          <div><b>Finalizează construcții</b><span>cost variabil · apare direct pe clădirea în construcție</span></div>
+          <div><b>Premium chest</b><span>4 S-Coins · loot cu șansă mai bună la Legendary</span></div>
+          <div><b>Rename hero</b><span>2 S-Coins · schimbă numele eroului</span></div>
+        </div>
+
+        <div className="shop-control">
+          <label>Schimbă clasa cu S-Coins</label>
+          <select value={classChoice} onChange={(e) => setClassChoice(e.target.value)}>
+            {Object.keys(CLASSES).map((className) => <option key={className} value={className}>{className}</option>)}
+          </select>
+          <button className="primary" disabled={classChoice === game.className || !canAfford(game.resources, { sCoins: 10 })} onClick={changeClass}>Schimbă clasa · 10 S-Coins</button>
+        </div>
+
+        <div className="shop-control">
+          <label>Schimbă numele eroului</label>
+          <input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} maxLength={28} />
+          <button className="primary" disabled={!canAfford(game.resources, { sCoins: 2 })} onClick={renameHero}>Rename · 2 S-Coins</button>
+        </div>
+
+        <div className="notice">{message}</div>
+      </div>
+    </section>
+  );
+}
+
+function TradeCenter({ game, setGame, session }) {
+  const [listings, setListings] = useState([]);
+  const [myListings, setMyListings] = useState([]);
+  const [selectedItemId, setSelectedItemId] = useState("");
+  const [priceGold, setPriceGold] = useState(250);
+  const [priceDiamonds, setPriceDiamonds] = useState(0);
+  const [status, setStatus] = useState("Trade Center folosește Supabase Marketplace.");
+
+  async function loadMarketplace() {
+    if (!supabase || !session) {
+      setStatus("Marketplace are nevoie de login Supabase.");
+      return;
+    }
+    const { data, error } = await supabase
+      .from("marketplace_listings")
+      .select("id,seller_id,seller_name,item,price_gold,price_diamonds,status,buyer_id,proceeds_claimed,created_at,sold_at")
+      .in("status", ["active", "sold"])
+      .order("created_at", { ascending: false })
+      .limit(80);
+    if (error) {
+      setStatus(`Eroare marketplace: ${error.message}. Rulează schema.sql din Update 8.`);
+      return;
+    }
+    setListings((data || []).filter((row) => row.status === "active"));
+    setMyListings((data || []).filter((row) => row.seller_id === session.user.id));
+    setStatus("Marketplace actualizat.");
+  }
+
+  useEffect(() => {
+    loadMarketplace();
+  }, [session]);
+
+  async function listItem() {
+    if (!supabase || !session) {
+      setStatus("Trebuie să fii logat pentru marketplace.");
+      return;
+    }
+    const item = game.inventory.find((i) => i.id === selectedItemId);
+    const gold = Math.max(0, Math.floor(Number(priceGold) || 0));
+    const diamonds = Math.max(0, Math.floor(Number(priceDiamonds) || 0));
+    if (!item) {
+      setStatus("Alege un item din inventar.");
+      return;
+    }
+    if (gold <= 0 && diamonds <= 0) {
+      setStatus("Setează preț în gold sau diamonds.");
+      return;
+    }
+    const { error } = await supabase.from("marketplace_listings").insert({
+      seller_id: session.user.id,
+      seller_name: game.playerName,
+      item,
+      price_gold: gold,
+      price_diamonds: diamonds
+    });
+    if (error) {
+      setStatus(`Nu am putut lista itemul: ${error.message}`);
+      return;
+    }
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.inventory = next.inventory.filter((i) => i.id !== item.id);
+      return next;
+    });
+    setSelectedItemId("");
+    setStatus(`${item.name} a fost listat în marketplace.`);
+    await loadMarketplace();
+  }
+
+  async function buyListing(listing) {
+    if (!supabase || !session) return;
+    if (listing.seller_id === session.user.id) {
+      setStatus("Nu poți cumpăra propriul item.");
+      return;
+    }
+    if (!canAfford(game.resources, { gold: listing.price_gold, diamonds: listing.price_diamonds })) {
+      setStatus("Nu ai destule resurse pentru acest item.");
+      return;
+    }
+    const { data, error } = await supabase.rpc("buy_market_listing", { listing_id: listing.id });
+    if (error) {
+      setStatus(`Cumpărare eșuată: ${error.message}`);
+      await loadMarketplace();
+      return;
+    }
+    const bought = Array.isArray(data) ? data[0] : data;
+    const item = bought?.item || listing.item;
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.resources.gold -= listing.price_gold || 0;
+      next.resources.diamonds -= listing.price_diamonds || 0;
+      if (next.inventory.length < 60) next.inventory.push(item);
+      else next.resources.gold += Math.max(50, item.value || 50);
+      return next;
+    });
+    setStatus(`Ai cumpărat ${item.name}.`);
+    await loadMarketplace();
+  }
+
+  async function cancelListing(listing) {
+    if (!supabase || !session) return;
+    const { data, error } = await supabase.rpc("cancel_market_listing", { listing_id: listing.id });
+    if (error) {
+      setStatus(`Nu pot anula listingul: ${error.message}`);
+      return;
+    }
+    const cancelled = Array.isArray(data) ? data[0] : data;
+    const item = cancelled?.item || listing.item;
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      if (next.inventory.length < 60) next.inventory.push(item);
+      else next.resources.gold += Math.max(50, item.value || 50);
+      return next;
+    });
+    setStatus(`Listing anulat: ${item.name}.`);
+    await loadMarketplace();
+  }
+
+  async function claimSales() {
+    if (!supabase || !session) return;
+    const { data, error } = await supabase.rpc("claim_market_sales");
+    if (error) {
+      setStatus(`Nu pot colecta vânzările: ${error.message}`);
+      return;
+    }
+    const claim = Array.isArray(data) ? data[0] : data;
+    const gold = Number(claim?.claimed_gold || 0);
+    const diamonds = Number(claim?.claimed_diamonds || 0);
+    const count = Number(claim?.sales_count || 0);
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.resources.gold += gold;
+      next.resources.diamonds += diamonds;
+      return next;
+    });
+    setStatus(count ? `Ai colectat ${gold} gold și ${diamonds} diamonds din ${count} vânzări.` : "Nu ai vânzări noi de colectat.");
+    await loadMarketplace();
+  }
+
+  if (!session) {
+    return <section className="panel"><h2>Trade Center</h2><p>Trebuie să fii logat pentru schimburi între jucători.</p></section>;
+  }
+
+  const selectedItem = game.inventory.find((item) => item.id === selectedItemId);
+
+  return (
+    <section className="grid trade-layout">
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Trade Center</h2>
+            <p>Listezi iteme în marketplace, iar alt jucător le poate cumpăra cu gold/diamonds.</p>
+          </div>
+          <button onClick={loadMarketplace}>Refresh</button>
+        </div>
+
+        <div className="trade-form">
+          <label>Alege item de vânzare</label>
+          <select value={selectedItemId} onChange={(e) => setSelectedItemId(e.target.value)}>
+            <option value="">Selectează item</option>
+            {game.inventory.map((item) => <option key={item.id} value={item.id}>{item.name} · Power {item.power}</option>)}
+          </select>
+          {selectedItem && <div className="item-stats">{SLOTS[selectedItem.slot].emoji} {selectedItem.name} · {itemStatsText(selectedItem)}</div>}
+          <div className="grid two">
+            <div><label>Preț gold</label><input type="number" min="0" value={priceGold} onChange={(e) => setPriceGold(e.target.value)} /></div>
+            <div><label>Preț diamonds</label><input type="number" min="0" value={priceDiamonds} onChange={(e) => setPriceDiamonds(e.target.value)} /></div>
+          </div>
+          <button className="primary big" onClick={listItem} disabled={!selectedItemId}>Listează în marketplace</button>
+        </div>
+
+        <div className="section-title compact">
+          <h3>Listingurile mele</h3>
+          <button onClick={claimSales}>Colectează vânzări</button>
+        </div>
+        <div className="market-list small-list">
+          {myListings.length === 0 ? <div className="empty-inventory">Nu ai listinguri.</div> : myListings.map((listing) => (
+            <div className="market-row" key={listing.id}>
+              <span>{SLOTS[listing.item.slot]?.emoji || "🎒"}</span>
+              <div><b>{listing.item.name}</b><small>{listing.status} · {listing.price_gold} gold · {listing.price_diamonds} diamonds</small></div>
+              {listing.status === "active" && <button className="danger" onClick={() => cancelListing(listing)}>Anulează</button>}
+              {listing.status === "sold" && <b>{listing.proceeds_claimed ? "Claimed" : "Sold"}</b>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Marketplace public</h2>
+            <p>Cumperi iteme puse la vânzare de alți jucători.</p>
+          </div>
+          <div className="power-summary">🪙 {game.resources.gold} · 🔷 {game.resources.diamonds}</div>
+        </div>
+        <div className="market-list">
+          {listings.length === 0 ? <div className="empty-inventory">Nu există iteme active la vânzare.</div> : listings.map((listing) => (
+            <div className="market-row" key={listing.id}>
+              <span>{SLOTS[listing.item.slot]?.emoji || "🎒"}</span>
+              <div>
+                <b>{listing.item.name}</b>
+                <small>{listing.seller_name} · {itemStatsText(listing.item)} · Power {listing.item.power}</small>
+              </div>
+              <strong>{listing.price_gold} gold · {listing.price_diamonds} diamonds</strong>
+              <button className="primary" disabled={listing.seller_id === session.user.id || !canAfford(game.resources, { gold: listing.price_gold, diamonds: listing.price_diamonds })} onClick={() => buyListing(listing)}>Buy</button>
+            </div>
+          ))}
+        </div>
+        <div className="notice">{status}</div>
+      </div>
+    </section>
+  );
+}
+
 function Hero({ game }) {
   const stats = getHeroStats(game);
   const selectedClass = CLASSES[game.className];
@@ -1632,7 +2149,7 @@ function Companions({ game, setGame }) {
   const activeMount = MOUNTS[game.mounts?.active];
 
   function canPay(cost) {
-    return game.resources.gold >= cost.gold && game.resources.wood >= cost.wood && game.resources.crystals >= cost.crystals;
+    return canAfford(game.resources, cost);
   }
 
   function unlockMount(id) {
@@ -1665,8 +2182,9 @@ function Companions({ game, setGame }) {
   function trainPaladin() {
     setGame((prev) => {
       let next = normalizeGame(prev);
+      const maxPaladinLevel = getProgressionLevel(next);
       const cost = { gold: 180 + next.paladin.level * 45, wood: 90 + next.paladin.level * 18, crystals: 15 + next.paladin.level * 4 };
-      if (!canAfford(next.resources, cost) || next.paladin.level >= 100) return next;
+      if (!canAfford(next.resources, cost) || next.paladin.level >= maxPaladinLevel) return next;
       next.resources.gold -= cost.gold;
       next.resources.wood -= cost.wood;
       next.resources.crystals -= cost.crystals;
@@ -1675,6 +2193,7 @@ function Companions({ game, setGame }) {
     });
   }
 
+  const paladinMaxLevel = getProgressionLevel(game);
   const paladinCost = { gold: 180 + game.paladin.level * 45, wood: 90 + game.paladin.level * 18, crystals: 15 + game.paladin.level * 4 };
   const cityBonus = getPaladinCityBonus(game);
   const battleBonus = getPaladinBattleBonus({ ...game, paladin: { ...game.paladin, mode: "battle" } });
@@ -1717,7 +2236,7 @@ function Companions({ game, setGame }) {
             <h2>Paladin Companion</h2>
             <p>Îl poți lăsa să protejeze orașul sau îl poți lua în lupte.</p>
           </div>
-          <div className="power-summary">🛡️ Lv. {game.paladin.level}</div>
+          <div className="power-summary">🛡️ Lv. {game.paladin.level}/{paladinMaxLevel}</div>
         </div>
 
         <div className="paladin-card">
@@ -1737,11 +2256,12 @@ function Companions({ game, setGame }) {
         <div className="level-rules">
           <div><b>City mode</b><span>+{cityBonus.gold} gold/oră · +{cityBonus.wood} wood/oră · +{cityBonus.crystals} crystals/oră</span></div>
           <div><b>Battle mode</b><span>ATK +{battleBonus.attack} · DEF +{battleBonus.defense} · extra hit {battleBonus.damage}</span></div>
-          <div><b>Train cost</b><span>{paladinCost.gold} gold · {paladinCost.wood} wood · {paladinCost.crystals} crystals</span></div>
+          <div><b>Train cost</b><span>{costText(paladinCost)}</span></div>
+          <div><b>Limită training</b><span>Paladinul nu poate depăși nivelul eroului: {paladinMaxLevel}</span></div>
         </div>
 
-        <button className="primary big" disabled={!canPay(paladinCost) || game.paladin.level >= 100} onClick={trainPaladin}>
-          {game.paladin.level >= 100 ? "Paladin Max Lv. 100" : "Antrenează Paladinul"}
+        <button className="primary big" disabled={!canPay(paladinCost) || game.paladin.level >= paladinMaxLevel} onClick={trainPaladin}>
+          {game.paladin.level >= paladinMaxLevel ? `Paladin Max Lv. ${paladinMaxLevel}` : "Antrenează Paladinul"}
         </button>
       </div>
     </section>
@@ -2011,6 +2531,8 @@ function Game({ session }) {
         <button className={tab === "battle" ? "active" : ""} onClick={() => setTab("battle")}>💀 Luptă</button>
         <button className={tab === "world" ? "active" : ""} onClick={() => setTab("world")}>🗺️ World</button>
         <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>🎒 Inventory</button>
+        <button className={tab === "shop" ? "active" : ""} onClick={() => setTab("shop")}>🛒 Shop</button>
+        <button className={tab === "trade" ? "active" : ""} onClick={() => setTab("trade")}>🤝 Trade</button>
         <button className={tab === "hero" ? "active" : ""} onClick={() => setTab("hero")}>🧙 Erou</button>
         <button className={tab === "companions" ? "active" : ""} onClick={() => setTab("companions")}>🐴 Companions</button>
         <button className={tab === "arena" ? "active" : ""} onClick={() => setTab("arena")}>🏆 Arena</button>
@@ -2022,6 +2544,8 @@ function Game({ session }) {
       {tab === "battle" && <Battle game={game} setGame={setGame} />}
       {tab === "world" && <Dungeon game={game} setGame={setGame} />}
       {tab === "inventory" && <Inventory game={game} setGame={setGame} />}
+      {tab === "shop" && <Shop game={game} setGame={setGame} />}
+      {tab === "trade" && <TradeCenter game={game} setGame={setGame} session={session} />}
       {tab === "hero" && <Hero game={game} />}
       {tab === "companions" && <Companions game={game} setGame={setGame} />}
       {tab === "arena" && <Arena game={game} setGame={setGame} session={session} />}
