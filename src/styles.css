@@ -2447,3 +2447,84 @@ select:focus {
 .compact-zone-grid {
   grid-template-columns: 1fr;
 }
+
+/* Update 51 · Beta Stability */
+textarea {
+  width: 100%;
+  min-height: 110px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  color: #fff;
+  background: rgba(15, 23, 42, .90);
+  padding: 14px 16px;
+  outline: none;
+  resize: vertical;
+}
+
+textarea:focus {
+  border-color: rgba(251, 191, 36, .85);
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, .12);
+}
+
+.changelog-list,
+.bug-list {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.changelog-card,
+.bug-card {
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 20px;
+  padding: 14px;
+  background: rgba(255,255,255,.055);
+}
+
+.changelog-card b,
+.bug-card b {
+  color: #fde68a;
+}
+
+.changelog-card p,
+.bug-card p {
+  margin: 8px 0 0;
+}
+
+.bug-card small {
+  display: block;
+  color: #94a3b8;
+  margin-top: 8px;
+}
+
+.bug-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.bug-head span {
+  border: 1px solid rgba(251, 191, 36, .25);
+  color: #fde68a;
+  background: rgba(251, 191, 36, .10);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bug-card pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 14px;
+  background: rgba(2, 6, 23, .55);
+  padding: 10px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.admin-bugs {
+  margin-top: 16px;
+}

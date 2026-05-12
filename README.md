@@ -1,83 +1,45 @@
-# S-Fleet Fantasy War ⚔️ — Update 41–50 Bundle
+# S-Fleet Fantasy War ⚔️ — Update 51
 
-This bundle is based on Update 40 and includes the requested beta-launch features plus the World/Dungeon attack fix.
+## Update 51 · Beta Stability + Bug Tracker
 
-## Critical fixes
+This update adds beta stability tools on top of Update 50.
 
-- Fixed World/Dungeon battle freeze after first attack.
-  - Cause: World/Dungeon combat referenced battle speed without defining it inside that component.
-  - Fix: local battle speed state added and the fight now resets a new monster after victory/defeat.
-- Added visible release badge in the game top bar:
-  - `Update 50 · Beta Launch Pack`
-- Added release checklist mentioning:
-  - `Update 16 · City Raid System`
+### Included
 
-## Included updates
+- Version badge: **Update 51 · Beta Stability**
+- Report Bug panel for players
+- Admin Bug Tracker panel
+- Changelog panel with update history
+- Debug JSON export
+- Recovery mode improvements
+- Local bug history
+- Supabase `bug_reports` table
+- Admin bug summary function
 
-### Update 41 — Player Profile + PvP Cooldown Prep
-- Public profile fields
-- Avatar/bio/title prep
-- PvP cooldown storage prep
-- Cleaner player profile surface
+### Important SQL step
 
-### Update 42 — Real Mail + Direct Messages Prep
-- Direct message storage in save
-- Supabase table for player direct messages
-
-### Update 43 — Guild Rank System + Permissions Prep
-- Leader / Officer / Member role model
-- Guild permission text and prep
-
-### Update 44 — City Skin / Cosmetic System
-- Cosmetic city skin selection
-- No power advantage from skins
-
-### Update 45 — Event Scheduler
-- Event history in save
-- Supabase `game_events` table for live scheduling
-
-### Update 46 — Server-side Combat Prep
-- Server rule checklist for raids/PvP
-- Same-alliance attack protection maintained
-- Shield and S-Coin theft protection maintained
-
-### Update 47 — Performance Cleanup
-- Save trimming and PWA/cache tools retained
-- Update 50 panel includes performance summary
-
-### Update 48 — S-Coin Request / Manual Payment Workflow
-- S-Coin request flow remains manual/admin controlled
-- Admin grants remain logged through Update 31 tools
-
-### Update 49 — Public Landing Page Prep
-- Landing flag and beta-ready profile prep
-
-### Update 50 — Beta Launch Pack
-- Release badge
-- Beta launch checklist
-- Marketplace rules helper
-- World/Dungeon attack fix
-
-## Supabase
-
-Run the new SQL if you want Update 41–50 server tables:
+Run the new SQL file in Supabase:
 
 ```txt
-Supabase → SQL Editor → New query → paste supabase/schema.sql → Run
+Supabase
+→ SQL Editor
+→ New query
+→ paste everything from supabase/schema.sql
+→ Run
 ```
 
 This adds:
 
-- `player_direct_messages`
-- `player_reports`
-- `game_events`
-- `beta_launch_summary()`
+```txt
+bug_reports
+admin_bug_summary()
+```
 
-## Deploy
+### Deploy
 
-Upload all files to GitHub and commit. Netlify will deploy automatically.
+Upload all files to GitHub, replacing the existing project files.
 
-Netlify settings stay the same:
+Netlify settings remain:
 
 ```txt
 Build command: npm run build
@@ -86,9 +48,19 @@ Base directory: empty
 Functions directory: empty
 ```
 
-Environment variables stay the same:
+Environment variables remain:
 
 ```txt
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
+```
+
+### After deploy
+
+Check the new tabs:
+
+```txt
+📜 Changelog
+🐞 Report Bug
+🐞 Bug Tracker (admin only)
 ```

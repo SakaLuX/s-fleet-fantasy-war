@@ -1781,3 +1781,71 @@ end;
 $$;
 
 grant execute on function public.beta_launch_summary() to authenticated;
+
+-- Update 51 · Beta Stability + Bug Tracker
+create table if not exists public.bug_reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid references auth.users(id) on delete set null,
+  player_name text not null default '',
+  area text not null default 'Other',
+  severity text not null default 'medium' check (severity in ('low','medium','high','critical')),
+  description text not null default '',
+  steps text not null default '',
+  debug jsonb not null default '{}'::jsonb,
+  status text not null default 'open' check (status in ('open','fixed','ignored')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.bug_reports enable row level security;
+
+drop policy if exists "Players can create own bug reports" on public.bug_reports;
+create policy "Players can create own bug reports"
+on public.bug_reports
+for insert
+to authenticated
+with check (reporter_id = auth.uid());
+
+drop policy if exists "Players can read own bug reports" on public.bug_reports;
+create policy "Players can read own bug reports"
+on public.bug_reports
+for select
+to authenticated
+using (reporter_id = auth.uid() or public.is_current_user_admin());
+
+drop policy if exists "Admins can update bug reports" on public.bug_reports;
+create policy "Admins can update bug reports"
+on public.bug_reports
+for update
+to authenticated
+using (public.is_current_user_admin())
+with check (public.is_current_user_admin());
+
+grant select, insert, update on public.bug_reports to authenticated;
+
+create index if not exists bug_reports_status_idx on public.bug_reports(status);
+create index if not exists bug_reports_created_at_idx on public.bug_reports(created_at desc);
+
+create or replace function public.admin_bug_summary()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_current_user_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  return jsonb_build_object(
+    'currentUpdate', 'Update 51 · Beta Stability',
+    'open', (select count(*) from public.bug_reports where status = 'open'),
+    'fixed', (select count(*) from public.bug_reports where status = 'fixed'),
+    'ignored', (select count(*) from public.bug_reports where status = 'ignored'),
+    'critical', (select count(*) from public.bug_reports where severity = 'critical' and status = 'open'),
+    'generatedAt', now()
+  );
+end;
+$$;
+
+grant execute on function public.admin_bug_summary() to authenticated;

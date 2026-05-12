@@ -403,7 +403,7 @@ const DAILY_QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 40,
+    version: 51,
     playerName,
     className,
     level: 1,
@@ -418,6 +418,7 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
     city: { lastResourceCollectionAt: null, shieldUntil: null },
     settings: { sound: false, reduceMotion: false, compactMode: false, notifications: false },
     update40: { tutorialRewardClaimed: false, lastOptimizedAt: null },
+    update51: { bugRewardClaimed: false, lastBugReportAt: null, lastRepairAt: null, changelogSeen: false },
     daily: {
       date: todayKey(),
       login: { lastClaimedDate: null, streak: 0 },
@@ -575,7 +576,7 @@ function claimDailyQuestReward(game, questId) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 50;
+  next.version = 51;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -602,6 +603,15 @@ function normalizeGame(game) {
     betaChecklist: { profile: true, cooldowns: true, guildRanks: true, cosmetics: true, events: true },
     ...(next.update50 || {})
   };
+  next.update51 = {
+    bugRewardClaimed: false,
+    lastBugReportAt: null,
+    lastRepairAt: null,
+    changelogSeen: false,
+    ...(next.update51 || {})
+  };
+  next.debugReports = Array.isArray(next.debugReports) ? next.debugReports.slice(0, 40) : [];
+  next.bugReportsLocal = Array.isArray(next.bugReportsLocal) ? next.bugReportsLocal.slice(0, 40) : [];
   next.directMessages = Array.isArray(next.directMessages) ? next.directMessages.slice(0, 80) : [];
   next.reports = Array.isArray(next.reports) ? next.reports.slice(0, 60) : [];
   next.eventHistory = Array.isArray(next.eventHistory) ? next.eventHistory.slice(0, 60) : [];
@@ -1474,7 +1484,7 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 50 · Beta Launch Pack</div>
+        <div className="badge">Update 51 · Beta Stability</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{getTitleData(game).emoji} {game.playerName} · {getProgressionLabel(game)} · {game.className} · {getTitleData(game).label}</p>
       </div>
@@ -4949,7 +4959,7 @@ function Update41To50Panel({ game, setGame, session, isAdmin }) {
       </div>
 
       <div className="panel update-card-highlight">
-        <div className="badge">Update 50 · Beta Launch Pack</div>
+        <div className="badge">Update 51 · Beta Stability</div>
         <h2>Beta Launch Checklist</h2>
         <p>This is the main release badge that now appears in the top bar.</p>
         <ul className="checklist">
@@ -4961,6 +4971,250 @@ function Update41To50Panel({ game, setGame, session, isAdmin }) {
         </ul>
         <button className="primary big" onClick={applySaferMarketRules}>Apply safer marketplace rules</button>
         <div className="notice">Tax {tax}% · {balanceStatus}</div>
+      </div>
+    </section>
+  );
+}
+
+
+const CHANGELOG_51 = [
+  { update: "Update 16", title: "City Raid System", text: "City attacks now damage walls, Citadel, Gold Mine and Wood Collector, with resource stealing based on destruction." },
+  { update: "Update 31", title: "Security + Balance + Admin Logs", text: "Added local save audit, server grants, balance config and anti-cheat repair tools." },
+  { update: "Update 40", title: "Visuals + Chat + PWA", text: "Added visual polish, chat, alerts, S-Coin requests, sound toggles and optimization tools." },
+  { update: "Update 50", title: "Beta Launch Pack", text: "Added player profile prep, cooldowns, guild permissions prep, cosmetics, events and beta launch summary." },
+  { update: "Update 51", title: "Beta Stability + Bug Tracker", text: "Added Report Bug, Admin Bug Tracker, changelog, recovery helpers and debug export tools." }
+];
+
+function buildDebugPayload(game, extra = {}) {
+  const safeGame = normalizeGame(game);
+  const audit = runSecurityAudit(safeGame);
+  return {
+    update: "Update 51 · Beta Stability",
+    generatedAt: new Date().toISOString(),
+    player: {
+      name: safeGame.playerName,
+      className: safeGame.className,
+      level: safeGame.level,
+      paragonLevel: safeGame.paragonLevel,
+      power: getHeroStats(safeGame).power,
+      guild: safeGame.guild?.name || null
+    },
+    resources: {
+      gold: safeGame.resources.gold,
+      wood: safeGame.resources.wood,
+      crystals: safeGame.resources.crystals,
+      diamonds: safeGame.resources.diamonds,
+      sCoins: safeGame.resources.sCoins,
+      energy: safeGame.resources.energy,
+      maxEnergy: getMaxEnergy(safeGame)
+    },
+    state: {
+      tabHint: extra.tabHint || "unknown",
+      inventoryItems: safeGame.inventory.length,
+      mailCount: safeGame.mail.length,
+      issues: audit
+    },
+    browser: typeof navigator !== "undefined" ? {
+      userAgent: navigator.userAgent,
+      language: navigator.language,
+      online: navigator.onLine
+    } : {},
+    extra
+  };
+}
+
+function downloadJson(filename, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function ChangelogPanel({ game, setGame }) {
+  function markSeen() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update51.changelogSeen = true;
+      addMail(next, "Changelog reviewed", "You reviewed the Update 51 changelog.", "system");
+      return next;
+    });
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="badge">Update 51 · Beta Stability</div>
+        <h2>Game Changelog</h2>
+        <p>Important milestones are listed here so players can always see what update is live.</p>
+        <div className="changelog-list">
+          {CHANGELOG_51.map((item) => (
+            <article className="changelog-card" key={item.update}>
+              <b>{item.update} · {item.title}</b>
+              <p>{item.text}</p>
+            </article>
+          ))}
+        </div>
+        <button className="primary" onClick={markSeen}>{game.update51?.changelogSeen ? "Seen" : "Mark changelog as seen"}</button>
+      </div>
+      <div className="panel">
+        <h2>Current Build</h2>
+        <div className="level-rules">
+          <div><b>Live version</b><span>Update 51 · Beta Stability</span></div>
+          <div><b>Bug tracking</b><span>Enabled</span></div>
+          <div><b>Recovery</b><span>Error boundary + save repair</span></div>
+          <div><b>Debug export</b><span>Available from Report Bug / Security</span></div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReportBugPanel({ game, setGame, session }) {
+  const [area, setArea] = useState("Arena");
+  const [severity, setSeverity] = useState("medium");
+  const [description, setDescription] = useState("");
+  const [steps, setSteps] = useState("");
+  const [status, setStatus] = useState("");
+
+  async function submitBug() {
+    const text = description.trim();
+    if (text.length < 8) {
+      setStatus("Please describe the bug with at least 8 characters.");
+      return;
+    }
+    const debug = buildDebugPayload(game, { area, severity, steps });
+    const payload = {
+      reporter_id: session?.user?.id,
+      player_name: game.playerName,
+      area,
+      severity,
+      description: text,
+      steps: steps.trim(),
+      debug
+    };
+
+    if (hasSupabase && session) {
+      const { error } = await supabase.from("bug_reports").insert(payload);
+      if (error) {
+        setStatus(`Bug report failed: ${error.message}. Run the Update 51 SQL.`);
+        return;
+      }
+    }
+
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update51.lastBugReportAt = new Date().toISOString();
+      next.bugReportsLocal.unshift({ id: `${Date.now()}`, area, severity, description: text, steps: steps.trim(), createdAt: new Date().toISOString() });
+      next.bugReportsLocal = next.bugReportsLocal.slice(0, 40);
+      addMail(next, "Bug report sent", `Your ${area} bug report was saved.`, "system");
+      return next;
+    });
+
+    setDescription("");
+    setSteps("");
+    setStatus("Bug report submitted.");
+  }
+
+  function exportDebug() {
+    downloadJson(`sfleet-debug-${Date.now()}.json`, buildDebugPayload(game, { area, severity, steps, description }));
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="badge">Update 51 · Report Bug</div>
+        <h2>Report Bug</h2>
+        <p>Send a bug report to the admin panel with safe debug information.</p>
+        <label>Where did it happen?</label>
+        <select value={area} onChange={(e) => setArea(e.target.value)}>
+          {["Arena", "World", "City", "Inventory", "Shop", "Trade", "Guild", "World Boss", "Admin", "Other"].map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <label>Severity</label>
+        <select value={severity} onChange={(e) => setSeverity(e.target.value)}>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+        <label>What happened?</label>
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Example: Arena opens, then the recovery screen appears..." />
+        <label>Steps to reproduce</label>
+        <textarea value={steps} onChange={(e) => setSteps(e.target.value)} placeholder="1. Open Arena\n2. Select a player\n3. Press attack" />
+        <div className="row-actions"><button className="primary" onClick={submitBug}>Submit bug</button><button onClick={exportDebug}>Export debug JSON</button></div>
+        {status && <div className="notice">{status}</div>}
+      </div>
+      <div className="panel">
+        <h2>Local Bug History</h2>
+        <div className="bug-list">
+          {(game.bugReportsLocal || []).length === 0 ? <div className="empty-slot">No local bug reports yet.</div> : game.bugReportsLocal.map((bug) => (
+            <article className="bug-card" key={bug.id}>
+              <b>{bug.area} · {bug.severity}</b>
+              <p>{bug.description}</p>
+              <small>{formatDateTime(bug.createdAt)}</small>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AdminBugTrackerPanel({ session, isAdmin }) {
+  const [bugs, setBugs] = useState([]);
+  const [status, setStatus] = useState("Ready.");
+  const [filter, setFilter] = useState("open");
+
+  async function loadBugs() {
+    if (!hasSupabase || !session || !isAdmin) {
+      setStatus("Admin bug tracker requires Supabase admin access.");
+      return;
+    }
+    let query = supabase.from("bug_reports").select("*").order("created_at", { ascending: false }).limit(100);
+    if (filter !== "all") query = query.eq("status", filter);
+    const { data, error } = await query;
+    if (error) {
+      setStatus(`Load failed: ${error.message}. Run Update 51 SQL.`);
+      return;
+    }
+    setBugs(data || []);
+    setStatus(`Loaded ${data?.length || 0} reports.`);
+  }
+
+  useEffect(() => { if (isAdmin) loadBugs(); }, [isAdmin, filter]);
+
+  async function setBugStatus(id, nextStatus) {
+    const { error } = await supabase.from("bug_reports").update({ status: nextStatus, updated_at: new Date().toISOString() }).eq("id", id);
+    if (error) setStatus(`Update failed: ${error.message}`);
+    else await loadBugs();
+  }
+
+  function exportBug(bug) {
+    downloadJson(`bug-${bug.id}.json`, bug);
+  }
+
+  return (
+    <section className="panel">
+      <div className="section-title"><div><div className="badge">Update 51 · Admin</div><h2>Admin Bug Tracker</h2><p>Review player bug reports, change status and export debug payloads.</p></div><button onClick={loadBugs}>Refresh</button></div>
+      <label>Status filter</label>
+      <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+        <option value="open">Open</option><option value="fixed">Fixed</option><option value="ignored">Ignored</option><option value="all">All</option>
+      </select>
+      <div className="notice">{status}</div>
+      <div className="bug-list admin-bugs">
+        {bugs.length === 0 ? <div className="empty-slot">No reports found.</div> : bugs.map((bug) => (
+          <article className="bug-card" key={bug.id}>
+            <div className="bug-head"><b>{bug.area} · {bug.severity}</b><span>{bug.status}</span></div>
+            <p>{bug.description}</p>
+            {bug.steps && <pre>{bug.steps}</pre>}
+            <small>{bug.player_name || bug.reporter_id} · {formatDateTime(bug.created_at)}</small>
+            <div className="row-actions"><button onClick={() => setBugStatus(bug.id, "fixed")}>Mark fixed</button><button onClick={() => setBugStatus(bug.id, "ignored")}>Ignore</button><button onClick={() => setBugStatus(bug.id, "open")}>Reopen</button><button onClick={() => exportBug(bug)}>Export</button></div>
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -5119,6 +5373,9 @@ function Game({ session }) {
         <button className={tab === "sound" ? "active" : ""} onClick={() => setTab("sound")}>🔊 Sound</button>
         <button className={tab === "performance" ? "active" : ""} onClick={() => setTab("performance")}>🚀 Optimize</button>
         <button className={tab === "update50" ? "active" : ""} onClick={() => setTab("update50")}>🏁 Update 50</button>
+        <button className={tab === "changelog" ? "active" : ""} onClick={() => setTab("changelog")}>📜 Changelog</button>
+        <button className={tab === "reportBug" ? "active" : ""} onClick={() => setTab("reportBug")}>🐞 Report Bug</button>
+        {isAdmin && <button className={tab === "bugTracker" ? "active" : ""} onClick={() => setTab("bugTracker")}>🐞 Bug Tracker</button>}
         {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
         {isAdmin && <button className={tab === "adminPlus" ? "active" : ""} onClick={() => setTab("adminPlus")}>📊 Admin+</button>}
         <button className={tab === "security" ? "active" : ""} onClick={() => setTab("security")}>🔒 Security</button>
@@ -5154,6 +5411,9 @@ function Game({ session }) {
       {tab === "sound" && <SoundSettingsPanel game={game} setGame={setGame} />}
       {tab === "performance" && <PerformancePanel game={game} setGame={setGame} />}
       {tab === "update50" && <Update41To50Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "changelog" && <ChangelogPanel game={game} setGame={setGame} />}
+      {tab === "reportBug" && <ReportBugPanel game={game} setGame={setGame} session={session} />}
+      {tab === "bugTracker" && isAdmin && <AdminBugTrackerPanel session={session} isAdmin={isAdmin} />}
       {tab === "admin" && isAdmin && <AdminPanel session={session} />}
       {tab === "adminPlus" && isAdmin && <AdminDashboardPlus session={session} />}
       {tab === "security" && <Update31SecurityPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
@@ -5178,10 +5438,10 @@ class AppErrorBoundary extends React.Component {
         <main className="shell center">
           <section className="panel recovery-panel">
             <h1>S-Fleet Fantasy War ⚔️</h1>
-            <h2>The game caught an error, but we will not leave a black screen anymore.</h2>
-            <p>Press Reload. If the problem continues, enter again after uploading the complete update to GitHub and running the SQL for leaderboard.</p>
+            <h2>Update 51 Recovery Mode</h2>
+            <p>The game caught an error, but it will not leave a black screen. Reload the game, then open Report Bug or Security to export debug information.</p>
             <div className="notice">Technical detail: {this.state.message}</div>
-            <button className="primary big" onClick={() => window.location.reload()}>Reload game</button>
+            <div className="row-actions"><button className="primary" onClick={() => window.location.reload()}>Reload game</button><button onClick={() => navigator.clipboard?.writeText(this.state.message || "Unknown error")}>Copy technical detail</button></div>
           </section>
         </main>
       );
