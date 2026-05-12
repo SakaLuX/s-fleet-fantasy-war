@@ -2304,3 +2304,15 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* Update 31 */
+.small-json {
+  min-height: 220px;
+}
+.stacked-actions {
+  margin-top: 16px;
+}
+.stacked-actions button {
+  margin-right: 8px;
+  margin-bottom: 8px;
+}

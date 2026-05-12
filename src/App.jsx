@@ -573,7 +573,7 @@ function claimDailyQuestReward(game, questId) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 16;
+  next.version = 31;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -619,6 +619,9 @@ function normalizeGame(game) {
   next.blacksmith.logs = Array.isArray(next.blacksmith.logs) ? next.blacksmith.logs.slice(0, 40) : [];
   next.coinRequests = Array.isArray(next.coinRequests) ? next.coinRequests.slice(0, 20) : [];
   next.securityLogs = Array.isArray(next.securityLogs) ? next.securityLogs.slice(0, 80) : [];
+  next.security = { lastRepairAt: null, repairCount: 0, ...(next.security || {}) };
+  next.security.repairCount = Math.max(0, Math.floor(Number(next.security.repairCount) || 0));
+  next.balance = { configVersion: 1, ...(next.balance || {}) };
 
   const savedBuildings = next.buildings && typeof next.buildings === "object" ? next.buildings : {};
   const citadelLevel = Math.max(1, Math.min(MAX_CITADEL_LEVEL, Math.floor(Number(savedBuildings.citadel?.level) || 1)));
@@ -2587,7 +2590,7 @@ function TradeCenter({ game, setGame, session }) {
       setStatus("You do not have enough resources for this item.");
       return;
     }
-    const { data, error } = await supabase.rpc("buy_market_listing", { listing_id: listing.id });
+    const { data, error } = await supabase.rpc("secure_buy_market_listing", { listing_id: listing.id });
     if (error) {
       setStatus(`Purchase failed: ${error.message}`);
       await loadMarketplace();
@@ -2595,14 +2598,18 @@ function TradeCenter({ game, setGame, session }) {
     }
     const bought = Array.isArray(data) ? data[0] : data;
     const item = bought?.item || listing.item;
-    setGame((prev) => {
-      const next = normalizeGame(prev);
-      next.resources.gold -= listing.price_gold || 0;
-      next.resources.diamonds -= listing.price_diamonds || 0;
-      if (next.inventory.length < 60) next.inventory.push(item);
-      else next.resources.gold += Math.max(50, item.value || 50);
-      return next;
-    });
+    if (bought?.buyer_data) {
+      setGame(normalizeGame(bought.buyer_data));
+    } else {
+      setGame((prev) => {
+        const next = normalizeGame(prev);
+        next.resources.gold -= listing.price_gold || 0;
+        next.resources.diamonds -= listing.price_diamonds || 0;
+        if (next.inventory.length < 60) next.inventory.push(item);
+        else next.resources.gold += Math.max(50, item.value || 50);
+        return next;
+      });
+    }
     setStatus(`You bought ${item.name}.`);
     await loadMarketplace();
   }
@@ -2628,7 +2635,7 @@ function TradeCenter({ game, setGame, session }) {
 
   async function claimSales() {
     if (!supabase || !session) return;
-    const { data, error } = await supabase.rpc("claim_market_sales");
+    const { data, error } = await supabase.rpc("secure_claim_market_sales");
     if (error) {
       setStatus(`Cannot collect sales: ${error.message}`);
       return;
@@ -2637,12 +2644,16 @@ function TradeCenter({ game, setGame, session }) {
     const gold = Number(claim?.claimed_gold || 0);
     const diamonds = Number(claim?.claimed_diamonds || 0);
     const count = Number(claim?.sales_count || 0);
-    setGame((prev) => {
-      const next = normalizeGame(prev);
-      next.resources.gold += gold;
-      next.resources.diamonds += diamonds;
-      return next;
-    });
+    if (claim?.seller_data) {
+      setGame(normalizeGame(claim.seller_data));
+    } else {
+      setGame((prev) => {
+        const next = normalizeGame(prev);
+        next.resources.gold += gold;
+        next.resources.diamonds += diamonds;
+        return next;
+      });
+    }
     setStatus(count ? `You collected ${gold} gold and ${diamonds} diamonds from ${count} sales.` : "You have no new sales to collect.");
     await loadMarketplace();
   }
@@ -4045,6 +4056,202 @@ function TutorialPanel({ game, setGame }) {
   return <section className="grid two"><div className="panel"><h2>New Player Tutorial</h2><p>Guided checklist for new players.</p><div className="battle-log">{steps.map((step, i) => <div key={step}>✅ Step {i + 1}: {step}</div>)}</div><button className="primary big" disabled={game.tutorial.done} onClick={finishTutorial}>{game.tutorial.done ? "Tutorial reward claimed" : "Finish tutorial and claim reward"}</button></div><div className="panel"><h2>Notifications</h2><p>Important events already arrive in Inbox: raids, sales, rewards, guild and boss activity.</p><div className="notice">Browser/PWA notification hooks are prepared by the PWA files.</div></div></section>;
 }
 
+
+function runSecurityAudit(game) {
+  const issues = [];
+  const maxEnergy = getMaxEnergy(game);
+  const resources = game.resources || {};
+  ["gold", "wood", "crystals", "diamonds", "sCoins", "energy"].forEach((key) => {
+    if (!Number.isFinite(Number(resources[key])) || Number(resources[key]) < 0) issues.push(`${key} has an invalid value`);
+  });
+  if (Number(resources.energy || 0) > maxEnergy) issues.push(`Energy is above maximum (${maxEnergy})`);
+  Object.entries(game.buildings || {}).forEach(([key, building]) => {
+    const level = Number(building?.level || 0);
+    if (!Number.isFinite(level) || level < 1) issues.push(`${key} building level is invalid`);
+    if (key === "citadel" && level > MAX_CITADEL_LEVEL) issues.push("Citadel is above the max level");
+    if (key !== "citadel" && level > Number(game.buildings?.citadel?.level || 1)) issues.push(`${key} is above Citadel level`);
+  });
+  [...(game.inventory || []), ...Object.values(game.equipment || {}).filter(Boolean)].forEach((item) => {
+    if ((item.upgradeLevel || 0) > 15) issues.push(`${item.name || "Item"} is above +15`);
+    if ((item.power || 0) > 250000) issues.push(`${item.name || "Item"} has suspicious power`);
+  });
+  if ((game.resources?.sCoins || 0) > 100000) issues.push("S-Coin balance is unusually high");
+  return issues;
+}
+
+function Update31SecurityPanel({ game, setGame, session, isAdmin }) {
+  const [auditMessage, setAuditMessage] = useState("Run a local save audit to check for broken values.");
+  const [serverStatus, setServerStatus] = useState("Server security tools require Supabase and admin email.");
+  const [balanceJson, setBalanceJson] = useState("");
+  const [logs, setLogs] = useState([]);
+  const [players, setPlayers] = useState([]);
+  const [targetUserId, setTargetUserId] = useState("");
+  const [grantResource, setGrantResource] = useState("sCoins");
+  const [grantAmount, setGrantAmount] = useState(10);
+  const [grantReason, setGrantReason] = useState("Manual creator grant");
+  const issues = runSecurityAudit(game);
+
+  async function loadSecurityData() {
+    if (!supabase || !session || !isAdmin) {
+      setServerStatus("Only admins can load server security data.");
+      return;
+    }
+    const [playersRes, configRes, logsRes] = await Promise.all([
+      supabase.rpc("admin_list_players"),
+      supabase.rpc("get_balance_config"),
+      supabase.rpc("admin_get_action_logs", { limit_count: 40 })
+    ]);
+    if (playersRes.error) {
+      setServerStatus(`Player load failed: ${playersRes.error.message}. Run Update 31 SQL.`);
+      return;
+    }
+    setPlayers(playersRes.data || []);
+    if (!targetUserId && playersRes.data?.[0]) setTargetUserId(playersRes.data[0].user_id);
+    if (!configRes.error) setBalanceJson(JSON.stringify(configRes.data || {}, null, 2));
+    if (!logsRes.error) setLogs(logsRes.data || []);
+    setServerStatus("Security data loaded.");
+  }
+
+  useEffect(() => {
+    if (isAdmin) loadSecurityData();
+  }, [isAdmin, session?.user?.id]);
+
+  function repairLocalSave() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.resources.energy = Math.min(next.resources.energy, getMaxEnergy(next));
+      next.security.lastRepairAt = new Date().toISOString();
+      next.security.repairCount += 1;
+      next.securityLogs.unshift({ at: new Date().toISOString(), type: "local_repair", details: runSecurityAudit(prev).join("; ") || "No issues found" });
+      next.securityLogs = next.securityLogs.slice(0, 80);
+      addMail(next, "Security repair", "Your save was normalized and checked by Update 31 tools.", "security");
+      return next;
+    });
+    setAuditMessage("Save repaired and normalized locally. It will auto-save to Supabase.");
+  }
+
+  function exportMySave() {
+    const blob = new Blob([JSON.stringify(normalizeGame(game), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${game.playerName || "player"}-save-backup.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setAuditMessage("Backup exported as JSON.");
+  }
+
+  async function saveBalanceConfig() {
+    if (!supabase || !isAdmin) return;
+    try {
+      const config = JSON.parse(balanceJson || "{}");
+      const { error } = await supabase.rpc("admin_set_balance_config", { new_config: config });
+      setServerStatus(error ? `Balance save failed: ${error.message}` : "Balance config saved and logged.");
+      await loadSecurityData();
+    } catch (error) {
+      setServerStatus(`Invalid balance JSON: ${error.message}`);
+    }
+  }
+
+  async function grantServerResource() {
+    if (!supabase || !isAdmin || !targetUserId) return;
+    const amount = Math.floor(Number(grantAmount) || 0);
+    const { error } = await supabase.rpc("admin_grant_resource", {
+      target_user_id: targetUserId,
+      resource_key: grantResource,
+      amount_delta: amount,
+      reason_text: grantReason || "Manual admin grant"
+    });
+    setServerStatus(error ? `Grant failed: ${error.message}` : `${grantResource} grant applied and logged.`);
+    await loadSecurityData();
+  }
+
+  async function exportTargetSave() {
+    if (!supabase || !isAdmin || !targetUserId) return;
+    const { data, error } = await supabase.rpc("admin_export_player_save", { target_user_id: targetUserId });
+    if (error) {
+      setServerStatus(`Export failed: ${error.message}`);
+      return;
+    }
+    const blob = new Blob([JSON.stringify(data || {}, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `admin-player-${targetUserId}-backup.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setServerStatus("Admin backup exported.");
+  }
+
+  return (
+    <section className="grid two admin-layout">
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Update 31 Security Center</h2>
+            <p>Balance checks, save repair, anti-cheat checks and player backup tools.</p>
+          </div>
+          <div className="power-summary">🔒 {issues.length ? `${issues.length} issue(s)` : "Clean"}</div>
+        </div>
+        <div className="level-rules">
+          <div><b>Energy rule</b><span>{game.resources.energy}/{getMaxEnergy(game)} max energy</span></div>
+          <div><b>S-Coin rule</b><span>S-Coins should only be granted by admin/server tools.</span></div>
+          <div><b>Marketplace rule</b><span>Item and resource checks are tracked by server logs.</span></div>
+          <div><b>Backup rule</b><span>Export before major admin edits.</span></div>
+        </div>
+        {issues.length ? <div className="battle-log">{issues.map((item, idx) => <div key={idx}>{item}</div>)}</div> : <div className="empty-inventory">No local save issues detected.</div>}
+        <div className="actions stacked-actions">
+          <button className="primary" onClick={repairLocalSave}>Repair / normalize my save</button>
+          <button onClick={exportMySave}>Export my save backup</button>
+        </div>
+        <div className="notice">{auditMessage}</div>
+      </div>
+
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Server Admin Security</h2>
+            <p>Requires your email in Supabase `admin_users` and Update 31 SQL.</p>
+          </div>
+          <button onClick={loadSecurityData}>Refresh</button>
+        </div>
+        {!isAdmin ? (
+          <div className="empty-inventory">This panel becomes active only for admin accounts.</div>
+        ) : (
+          <>
+            <label>Target player</label>
+            <select value={targetUserId} onChange={(e) => setTargetUserId(e.target.value)}>
+              {players.map((player) => <option key={player.user_id} value={player.user_id}>{player.player_name || player.email || player.user_id}</option>)}
+            </select>
+            <div className="grid three">
+              <div><label>Resource</label><select value={grantResource} onChange={(e) => setGrantResource(e.target.value)}><option value="sCoins">S-Coins</option><option value="diamonds">Diamonds</option><option value="gold">Gold</option><option value="wood">Wood</option><option value="crystals">Crystals</option><option value="energy">Energy</option></select></div>
+              <div><label>Amount</label><input type="number" value={grantAmount} onChange={(e) => setGrantAmount(e.target.value)} /></div>
+              <div><label>Reason</label><input value={grantReason} onChange={(e) => setGrantReason(e.target.value)} /></div>
+            </div>
+            <div className="actions stacked-actions">
+              <button className="primary" onClick={grantServerResource}>Apply server grant</button>
+              <button onClick={exportTargetSave}>Export selected player save</button>
+            </div>
+            <label>Balance config JSON</label>
+            <textarea className="admin-json small-json" value={balanceJson} onChange={(e) => setBalanceJson(e.target.value)} spellCheck="false" />
+            <button className="primary big" onClick={saveBalanceConfig}>Save balance config</button>
+            <h3>Recent admin/security logs</h3>
+            <div className="market-list small-list">
+              {logs.length === 0 ? <div className="empty-inventory">No logs loaded.</div> : logs.map((log) => (
+                <div className="market-row" key={log.id}>
+                  <span>🧾</span>
+                  <div><b>{log.action_type}</b><small>{log.admin_email || "system"} · {new Date(log.created_at).toLocaleString()}</small></div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        <div className="notice">{serverStatus}</div>
+      </div>
+    </section>
+  );
+}
+
 function Game({ session }) {
   const [game, setGame] = useState(null);
   const [tab, setTab] = useState("city");
@@ -4189,6 +4396,7 @@ function Game({ session }) {
         <button className={tab === "guildWars" ? "active" : ""} onClick={() => setTab("guildWars")}>⚔️ Guild Wars</button>
         <button className={tab === "worldBoss" ? "active" : ""} onClick={() => setTab("worldBoss")}>🐉 World Boss</button>
         {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
+        <button className={tab === "security" ? "active" : ""} onClick={() => setTab("security")}>🔒 Security</button>
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Quests</button>
         <button className="danger-tab" onClick={resetSave}>Reset progress</button>
       </nav>
@@ -4214,6 +4422,7 @@ function Game({ session }) {
       {tab === "guildWars" && <GuildWarsPanel game={game} session={session} />}
       {tab === "worldBoss" && <WorldBossPanel game={game} setGame={setGame} session={session} />}
       {tab === "admin" && isAdmin && <AdminPanel session={session} />}
+      {tab === "security" && <Update31SecurityPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>
   );

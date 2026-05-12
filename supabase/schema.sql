@@ -1195,3 +1195,366 @@ end;
 $$;
 
 grant execute on function public.attack_world_boss(int) to authenticated;
+
+-- S-Fleet Fantasy War ⚔️ — Update 31
+-- Security + Balance + Admin Logs + server-side grants/backups/market purchase validation.
+
+create table if not exists public.admin_action_logs (
+  id uuid primary key default gen_random_uuid(),
+  admin_user_id uuid references auth.users(id) on delete set null,
+  admin_email text,
+  target_user_id uuid references auth.users(id) on delete set null,
+  action_type text not null,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.admin_action_logs enable row level security;
+
+drop policy if exists "Admins can read admin action logs" on public.admin_action_logs;
+create policy "Admins can read admin action logs"
+on public.admin_action_logs
+for select
+to authenticated
+using (public.is_current_user_admin());
+
+create index if not exists admin_action_logs_created_idx on public.admin_action_logs(created_at desc);
+create index if not exists admin_action_logs_target_idx on public.admin_action_logs(target_user_id, created_at desc);
+
+create table if not exists public.game_balance_config (
+  id text primary key default 'current',
+  config jsonb not null default '{
+    "version": 1,
+    "xpMultiplier": 1,
+    "goldMultiplier": 1,
+    "dropRateMultiplier": 1,
+    "marketplaceMaxGoldPrice": 100000000,
+    "marketplaceMaxDiamondPrice": 1000000,
+    "raidStealMultiplier": 1,
+    "worldBossRewardMultiplier": 1,
+    "notes": "Edit from Update 31 Security Center"
+  }'::jsonb,
+  updated_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.game_balance_config(id)
+values ('current')
+on conflict (id) do nothing;
+
+alter table public.game_balance_config enable row level security;
+
+drop policy if exists "Players can read balance config" on public.game_balance_config;
+create policy "Players can read balance config"
+on public.game_balance_config
+for select
+to authenticated
+using (true);
+
+create or replace function public.log_admin_action(target_user_id uuid, action_type text, details jsonb default '{}'::jsonb)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_id uuid;
+begin
+  if not public.is_current_user_admin() then
+    raise exception 'Not admin';
+  end if;
+
+  insert into public.admin_action_logs(admin_user_id, admin_email, target_user_id, action_type, details)
+  values (auth.uid(), coalesce(auth.jwt()->>'email', ''), target_user_id, action_type, coalesce(details, '{}'::jsonb))
+  returning id into new_id;
+
+  return new_id;
+end;
+$$;
+
+grant execute on function public.log_admin_action(uuid, text, jsonb) to authenticated;
+
+create or replace function public.admin_get_action_logs(limit_count int default 50)
+returns table (
+  id uuid,
+  admin_email text,
+  target_user_id uuid,
+  action_type text,
+  details jsonb,
+  created_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select l.id, l.admin_email, l.target_user_id, l.action_type, l.details, l.created_at
+  from public.admin_action_logs l
+  where public.is_current_user_admin()
+  order by l.created_at desc
+  limit greatest(1, least(coalesce(limit_count, 50), 200));
+$$;
+
+grant execute on function public.admin_get_action_logs(int) to authenticated;
+
+create or replace function public.get_balance_config()
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  select config from public.game_balance_config where id = 'current';
+$$;
+
+grant execute on function public.get_balance_config() to authenticated;
+
+create or replace function public.admin_set_balance_config(new_config jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_current_user_admin() then
+    raise exception 'Not admin';
+  end if;
+
+  update public.game_balance_config
+  set config = coalesce(new_config, '{}'::jsonb), updated_by = auth.uid(), updated_at = now()
+  where id = 'current';
+
+  perform public.log_admin_action(null, 'balance_config_update', jsonb_build_object('config', new_config));
+
+  return (select config from public.game_balance_config where id = 'current');
+end;
+$$;
+
+grant execute on function public.admin_set_balance_config(jsonb) to authenticated;
+
+create or replace function public.admin_update_player_data(target_user_id uuid, new_data jsonb)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_current_user_admin() then
+    raise exception 'Not admin';
+  end if;
+
+  update public.game_saves
+  set
+    data = coalesce(new_data, '{}'::jsonb),
+    player_name = coalesce(nullif(new_data->>'playerName', ''), player_name),
+    class_name = coalesce(nullif(new_data->>'className', ''), class_name),
+    updated_at = now()
+  where user_id = target_user_id;
+
+  if found then
+    perform public.log_admin_action(target_user_id, 'player_save_update', jsonb_build_object('playerName', new_data->>'playerName', 'className', new_data->>'className'));
+  end if;
+
+  return found;
+end;
+$$;
+
+grant execute on function public.admin_update_player_data(uuid, jsonb) to authenticated;
+
+create or replace function public.admin_grant_resource(target_user_id uuid, resource_key text, amount_delta int, reason_text text default 'Manual admin grant')
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  allowed text[] := array['gold','wood','crystals','diamonds','sCoins','energy'];
+  current_data jsonb;
+  current_value int;
+  new_value int;
+begin
+  if not public.is_current_user_admin() then
+    raise exception 'Not admin';
+  end if;
+  if not resource_key = any(allowed) then
+    raise exception 'Invalid resource key';
+  end if;
+  if amount_delta = 0 then
+    raise exception 'Amount cannot be zero';
+  end if;
+
+  select data into current_data from public.game_saves where user_id = target_user_id for update;
+  if current_data is null then
+    raise exception 'Player save not found';
+  end if;
+
+  current_data := jsonb_set(current_data, '{resources}', coalesce(current_data->'resources', '{}'::jsonb), true);
+  current_value := coalesce((current_data #>> array['resources', resource_key])::int, 0);
+  new_value := greatest(0, current_value + amount_delta);
+
+  current_data := jsonb_set(current_data, array['resources', resource_key], to_jsonb(new_value), true);
+  current_data := jsonb_set(current_data, '{security,lastServerGrantAt}', to_jsonb(now()::text), true);
+
+  update public.game_saves
+  set data = current_data, updated_at = now()
+  where user_id = target_user_id;
+
+  perform public.log_admin_action(
+    target_user_id,
+    'resource_grant',
+    jsonb_build_object('resource', resource_key, 'amountDelta', amount_delta, 'oldValue', current_value, 'newValue', new_value, 'reason', reason_text)
+  );
+
+  return current_data;
+end;
+$$;
+
+grant execute on function public.admin_grant_resource(uuid, text, int, text) to authenticated;
+
+create or replace function public.admin_export_player_save(target_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  payload jsonb;
+begin
+  if not public.is_current_user_admin() then
+    raise exception 'Not admin';
+  end if;
+
+  select jsonb_build_object(
+    'user_id', user_id,
+    'player_name', player_name,
+    'class_name', class_name,
+    'public_profile', public_profile,
+    'data', data,
+    'updated_at', updated_at
+  ) into payload
+  from public.game_saves
+  where user_id = target_user_id;
+
+  perform public.log_admin_action(target_user_id, 'player_save_export', '{}'::jsonb);
+  return payload;
+end;
+$$;
+
+grant execute on function public.admin_export_player_save(uuid) to authenticated;
+
+create or replace function public.secure_buy_market_listing(listing_id uuid)
+returns table (
+  id uuid,
+  item jsonb,
+  price_gold int,
+  price_diamonds int,
+  seller_id uuid,
+  buyer_data jsonb
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  listing public.marketplace_listings%rowtype;
+  buyer jsonb;
+  buyer_gold int;
+  buyer_diamonds int;
+  inventory jsonb;
+  inventory_count int;
+  item_value int;
+begin
+  select * into listing
+  from public.marketplace_listings
+  where marketplace_listings.id = listing_id
+    and marketplace_listings.status = 'active'
+  for update;
+
+  if listing.id is null then
+    raise exception 'Listing is not active';
+  end if;
+  if listing.seller_id = auth.uid() then
+    raise exception 'You cannot buy your own listing';
+  end if;
+
+  select data into buyer from public.game_saves where user_id = auth.uid() for update;
+  if buyer is null then
+    raise exception 'Buyer save not found';
+  end if;
+
+  buyer_gold := coalesce((buyer #>> '{resources,gold}')::int, 0);
+  buyer_diamonds := coalesce((buyer #>> '{resources,diamonds}')::int, 0);
+  if buyer_gold < listing.price_gold or buyer_diamonds < listing.price_diamonds then
+    raise exception 'Insufficient resources';
+  end if;
+
+  inventory := coalesce(buyer->'inventory', '[]'::jsonb);
+  inventory_count := jsonb_array_length(inventory);
+  item_value := greatest(50, coalesce((listing.item->>'value')::int, 50));
+
+  buyer := jsonb_set(buyer, '{resources,gold}', to_jsonb(buyer_gold - listing.price_gold), true);
+  buyer := jsonb_set(buyer, '{resources,diamonds}', to_jsonb(buyer_diamonds - listing.price_diamonds), true);
+
+  if inventory_count < 80 then
+    buyer := jsonb_set(buyer, '{inventory}', inventory || jsonb_build_array(listing.item), true);
+  else
+    buyer := jsonb_set(buyer, '{resources,gold}', to_jsonb((buyer #>> '{resources,gold}')::int + item_value), true);
+  end if;
+
+  update public.game_saves set data = buyer, updated_at = now() where user_id = auth.uid();
+
+  update public.marketplace_listings ml
+  set status = 'sold', buyer_id = auth.uid(), sold_at = now(), updated_at = now()
+  where ml.id = listing.id;
+
+  insert into public.admin_action_logs(admin_user_id, admin_email, target_user_id, action_type, details)
+  values (auth.uid(), coalesce(auth.jwt()->>'email', ''), listing.seller_id, 'marketplace_secure_buy', jsonb_build_object('listingId', listing.id, 'priceGold', listing.price_gold, 'priceDiamonds', listing.price_diamonds));
+
+  return query select listing.id, listing.item, listing.price_gold, listing.price_diamonds, listing.seller_id, buyer;
+end;
+$$;
+
+grant execute on function public.secure_buy_market_listing(uuid) to authenticated;
+
+create or replace function public.secure_claim_market_sales()
+returns table (
+  claimed_gold int,
+  claimed_diamonds int,
+  sales_count int,
+  seller_data jsonb
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  gold_sum int;
+  diamond_sum int;
+  sale_count int;
+  current_data jsonb;
+begin
+  with updated as (
+    update public.marketplace_listings ml
+    set proceeds_claimed = true, updated_at = now()
+    where ml.seller_id = auth.uid()
+      and ml.status = 'sold'
+      and ml.proceeds_claimed = false
+    returning ml.price_gold, ml.price_diamonds
+  )
+  select coalesce(sum(price_gold),0)::int, coalesce(sum(price_diamonds),0)::int, count(*)::int
+  into gold_sum, diamond_sum, sale_count
+  from updated;
+
+  select data into current_data from public.game_saves where user_id = auth.uid() for update;
+  if current_data is null then
+    raise exception 'Seller save not found';
+  end if;
+
+  current_data := jsonb_set(current_data, '{resources,gold}', to_jsonb(coalesce((current_data #>> '{resources,gold}')::int,0) + gold_sum), true);
+  current_data := jsonb_set(current_data, '{resources,diamonds}', to_jsonb(coalesce((current_data #>> '{resources,diamonds}')::int,0) + diamond_sum), true);
+
+  update public.game_saves set data = current_data, updated_at = now() where user_id = auth.uid();
+
+  return query select gold_sum, diamond_sum, sale_count, current_data;
+end;
+$$;
+
+grant execute on function public.secure_claim_market_sales() to authenticated;

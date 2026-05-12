@@ -1,80 +1,56 @@
-# S-Fleet Fantasy War ⚔️ — Mega Update 17–30
+# S-Fleet Fantasy War ⚔️ — Update 31
 
-This bundle is based on the English version + Update 16 and includes the Arena crash fix.
+Update 31 focuses on stability, balance, admin safety, server-side controls and anti-cheat checks.
 
-## Critical fix
+## Included
 
-- Fixed Arena runtime error:
-  - `Cannot access 'g' before initialization`
-  - Cause: opponent/guild check variable order in the Arena component.
-  - Result: Arena should no longer crash to the recovery screen.
+- New **Security** tab
+- Local save audit and repair
+- Player save backup export
+- Admin server security panel
+- Admin action logs
+- Server-side resource grants, including S-Coins
+- Balance config JSON stored in Supabase
+- Admin player backup/export
+- Marketplace secure buy validation
+- Marketplace secure claim sales validation
+- Anti-cheat style checks for negative values, over-max energy, item upgrades and suspicious values
+- Admin edits are logged through Supabase
 
-## Included systems
+## Important SQL step
 
-### Update 17 — Real Combat System Upgrade
-- Critical hits
-- Dodge
-- Block
-- Multiple class skills
-- Auto battle
-- Battle speed x1/x2/x3
-- Alliance helper support remains active
-
-### Update 18 — Advanced Hero Classes
-- Class evolution unlocks at level 50
-- Knight → Paladin / Warlord
-- Mage → Archmage / Necromancer
-- Archer → Ranger / Assassin
-- Evolution adds permanent stat and power bonuses
-
-### Update 19–20 — Item Upgrade + Blacksmith
-- New Blacksmith tab
-- Upgrade item up to +15
-- Socket gems
-- Dismantle items for materials
-- Craft random gear
-
-### Update 21 — Campaign
-- New Campaign tab
-- Story chapters with level requirements and rewards
-
-### Update 22–23 — Alliance/Map Expansion
-- Guild systems remain active
-- New strategic Kingdom Map tab
-
-### Update 24 — Notifications
-- Inbox/mail remains the central notification system for rewards, attacks, sales and events
-
-### Update 25–26 — Admin/Economy/Security
-- Existing admin tools remain active
-- Save-safe logs and security structures are prepared in the player data
-
-### Update 27 — S-Coin Requests
-- S-Coin economy remains manual/admin controlled
-- Premium actions still use S-Coins
-
-### Update 28–30 — Mobile/PWA/Season/Tutorial
-- Existing PWA files included
-- New Season / Battle Pass tab
-- New Tutorial tab with beginner reward
-
-## Supabase
-
-No new SQL is required only for this bundle if you already ran the Update 16 SQL.
-
-If World Boss or city raids are not working, run:
+Run the full SQL file again:
 
 ```txt
-supabase/schema.sql
+Supabase → SQL Editor → New query → paste supabase/schema.sql → Run
 ```
 
-in Supabase SQL Editor.
+This adds:
+
+- `admin_action_logs`
+- `game_balance_config`
+- `admin_get_action_logs`
+- `admin_grant_resource`
+- `admin_set_balance_config`
+- `admin_export_player_save`
+- `secure_buy_market_listing`
+- `secure_claim_market_sales`
+
+## Admin email
+
+If you did not already add your admin email, run:
+
+```sql
+insert into public.admin_users(email)
+values ('your-email@example.com')
+on conflict (email) do nothing;
+```
 
 ## Deploy
 
 Upload all files to GitHub, replacing the existing project files.
 
-Netlify settings:
+Netlify settings remain:
 
 ```txt
 Build command: npm run build
