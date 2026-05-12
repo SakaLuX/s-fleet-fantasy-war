@@ -6,7 +6,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const hasSupabase = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v2";
+const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v3";
 
 const CLASSES = {
   Knight: {
@@ -66,6 +66,27 @@ const ENEMIES = [
   { name: "Infernal Brute", emoji: "🔥", hp: 195, attack: 28, defense: 10, reward: { gold: 210, wood: 70, crystals: 18, xp: 105 } }
 ];
 
+const SLOTS = {
+  weapon: { label: "Weapon", emoji: "⚔️" },
+  armor: { label: "Armor", emoji: "🛡️" },
+  ring: { label: "Ring", emoji: "💍" },
+  amulet: { label: "Amulet", emoji: "📿" }
+};
+
+const RARITIES = {
+  Common: { mult: 1, weight: 58 },
+  Rare: { mult: 1.45, weight: 27 },
+  Epic: { mult: 2.05, weight: 12 },
+  Legendary: { mult: 3, weight: 3 }
+};
+
+const ITEM_NAMES = {
+  weapon: ["Iron Blade", "Hunter Bow", "Arcane Staff", "War Axe", "Citadel Saber"],
+  armor: ["Guard Plate", "Wolfhide Armor", "Mystic Robe", "Knight Vest", "Dragon Scale"],
+  ring: ["Ring of Focus", "Band of Might", "Shadow Ring", "Crystal Loop", "Royal Signet"],
+  amulet: ["Amulet of Life", "Mana Charm", "Sun Pendant", "Moon Relic", "Ancient Talisman"]
+};
+
 const QUESTS = [
   {
     id: "first_blood",
@@ -82,6 +103,13 @@ const QUESTS = [
     check: (game) => Object.values(game.buildings).some((b) => b.level >= 2)
   },
   {
+    id: "collector",
+    title: "Loot Collector",
+    text: "Adună cel puțin 3 iteme în inventar sau echipate.",
+    reward: { gold: 220, wood: 80, crystals: 22, xp: 85 },
+    check: (game) => totalItemCount(game) >= 3
+  },
+  {
     id: "veteran",
     title: "Arena Veteran",
     text: "Câștigă 5 lupte.",
@@ -92,7 +120,7 @@ const QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 2,
+    version: 3,
     playerName,
     className,
     level: 1,
@@ -105,7 +133,9 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
       mine: { level: 1 },
       academy: { level: 1 }
     },
-    stats: { wins: 0, losses: 0 },
+    inventory: [],
+    equipment: { weapon: null, armor: null, ring: null, amulet: null },
+    stats: { wins: 0, losses: 0, itemsFound: 0 },
     completedQuests: [],
     createdAt: new Date().toISOString()
   };
@@ -115,24 +145,122 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function normalizeGame(game) {
+  if (!game) return null;
+  const next = clone(game);
+  next.version = 3;
+  next.resources = { gold: 0, wood: 0, crystals: 0, energy: 0, ...(next.resources || {}) };
+  next.buildings = {
+    citadel: { level: 1 },
+    barracks: { level: 1 },
+    mine: { level: 1 },
+    academy: { level: 1 },
+    ...(next.buildings || {})
+  };
+  next.inventory = Array.isArray(next.inventory) ? next.inventory : [];
+  next.equipment = { weapon: null, armor: null, ring: null, amulet: null, ...(next.equipment || {}) };
+  next.stats = { wins: 0, losses: 0, itemsFound: 0, ...(next.stats || {}) };
+  next.completedQuests = Array.isArray(next.completedQuests) ? next.completedQuests : [];
+  return next;
+}
+
+function totalItemCount(game) {
+  return (game.inventory?.length || 0) + Object.values(game.equipment || {}).filter(Boolean).length;
+}
+
+function pick(array) {
+  return array[Math.floor(Math.random() * array.length)];
+}
+
+function rarityRoll() {
+  const total = Object.values(RARITIES).reduce((sum, r) => sum + r.weight, 0);
+  let roll = Math.random() * total;
+  for (const [name, data] of Object.entries(RARITIES)) {
+    roll -= data.weight;
+    if (roll <= 0) return name;
+  }
+  return "Common";
+}
+
+function createItem(level = 1, source = "Monster") {
+  const slot = pick(Object.keys(SLOTS));
+  const rarity = rarityRoll();
+  const rarityData = RARITIES[rarity];
+  const name = `${rarity} ${pick(ITEM_NAMES[slot])}`;
+  const base = Math.max(1, level);
+  const stats = { hp: 0, attack: 0, defense: 0, mana: 0 };
+
+  if (slot === "weapon") stats.attack = Math.round((6 + base * 2.2) * rarityData.mult);
+  if (slot === "armor") {
+    stats.hp = Math.round((28 + base * 8) * rarityData.mult);
+    stats.defense = Math.round((3 + base * 1.2) * rarityData.mult);
+  }
+  if (slot === "ring") {
+    stats.attack = Math.round((3 + base * 1.2) * rarityData.mult);
+    stats.defense = Math.round((2 + base * 0.8) * rarityData.mult);
+  }
+  if (slot === "amulet") {
+    stats.hp = Math.round((18 + base * 5) * rarityData.mult);
+    stats.mana = Math.round((10 + base * 4) * rarityData.mult);
+  }
+
+  const power = stats.hp + stats.attack * 6 + stats.defense * 7 + stats.mana * 2;
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name,
+    slot,
+    rarity,
+    level,
+    source,
+    stats,
+    power,
+    value: Math.max(15, Math.round(power * 1.2 + level * 10)),
+    createdAt: new Date().toISOString()
+  };
+}
+
+function itemStatsText(item) {
+  if (!item) return "Empty";
+  const parts = [];
+  if (item.stats.hp) parts.push(`HP +${item.stats.hp}`);
+  if (item.stats.attack) parts.push(`ATK +${item.stats.attack}`);
+  if (item.stats.defense) parts.push(`DEF +${item.stats.defense}`);
+  if (item.stats.mana) parts.push(`Mana +${item.stats.mana}`);
+  return parts.join(" · ") || "No stats";
+}
+
+function equipmentBonus(game) {
+  const bonus = { hp: 0, attack: 0, defense: 0, mana: 0, power: 0 };
+  Object.values(game.equipment || {}).filter(Boolean).forEach((item) => {
+    bonus.hp += item.stats.hp || 0;
+    bonus.attack += item.stats.attack || 0;
+    bonus.defense += item.stats.defense || 0;
+    bonus.mana += item.stats.mana || 0;
+    bonus.power += item.power || 0;
+  });
+  return bonus;
+}
+
 function getHeroStats(game) {
   const base = CLASSES[game.className].base;
   const b = game.buildings;
   const levelBonus = game.level - 1;
+  const gear = equipmentBonus(game);
 
-  const hp = base.hp + levelBonus * 18 + b.citadel.level * 12;
-  const attack = base.attack + levelBonus * 4 + b.barracks.level * 3;
-  const defense = base.defense + levelBonus * 2 + b.citadel.level * 2;
-  const mana = base.mana + levelBonus * 7 + b.academy.level * 8;
+  const hp = base.hp + levelBonus * 18 + b.citadel.level * 12 + gear.hp;
+  const attack = base.attack + levelBonus * 4 + b.barracks.level * 3 + gear.attack;
+  const defense = base.defense + levelBonus * 2 + b.citadel.level * 2 + gear.defense;
+  const mana = base.mana + levelBonus * 7 + b.academy.level * 8 + gear.mana;
   const power =
     100 +
     game.level * 45 +
     b.citadel.level * 35 +
     b.barracks.level * 35 +
     b.academy.level * 25 +
-    b.mine.level * 15;
+    b.mine.level * 15 +
+    gear.power;
 
-  return { hp, attack, defense, mana, power };
+  return { hp, attack, defense, mana, power, gear };
 }
 
 function applyReward(game, reward) {
@@ -286,7 +414,7 @@ function Onboarding({ onStart }) {
           <div className="panel kingdom-preview">
             <div className="big-emoji">🏰</div>
             <h2>Obiectiv MVP</h2>
-            <p>Construiești orașul, ridici eroul, lupți cu monștri și salvezi progresul.</p>
+            <p>Construiești orașul, ridici eroul, lupți cu monștri, primești iteme și echipezi eroul.</p>
           </div>
         </div>
       </section>
@@ -299,14 +427,14 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Alpha MVP</div>
+        <div className="badge">Update 2 · Inventory</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{game.playerName} · Level {game.level} · {game.className}</p>
       </div>
 
       <div className="top-actions">
         <div className="stat-box">👑 <b>{stats.power}</b><span>Power</span></div>
-        <div className="stat-box">🏆 <b>{game.stats.wins}</b><span>Wins</span></div>
+        <div className="stat-box">🎒 <b>{totalItemCount(game)}</b><span>Items</span></div>
         <div className="stat-box">💾 <b>{saveStatus}</b><span>Save</span></div>
         {session && <button className="danger" onClick={onLogout}>Logout</button>}
       </div>
@@ -415,14 +543,31 @@ function Battle({ game, setGame }) {
   }
 
   function finishWin(defeatedEnemy) {
+    let dropped = null;
+
     setGame((prev) => {
-      let next = clone(prev);
+      let next = normalizeGame(prev);
       next.stats.wins += 1;
       next.resources.energy = Math.max(0, next.resources.energy - 1);
       next = applyReward(next, defeatedEnemy.reward);
+
+      if (Math.random() < 0.65) {
+        dropped = createItem(next.level, defeatedEnemy.name);
+        if (next.inventory.length < 60) {
+          next.inventory.push(dropped);
+          next.stats.itemsFound += 1;
+        } else {
+          next.resources.gold += dropped.value;
+          dropped = { ...dropped, soldBecauseFull: true };
+        }
+      }
+
       return next;
     });
+
     addLog(`Victorie! Reward: ${defeatedEnemy.reward.gold} gold, ${defeatedEnemy.reward.xp} XP.`);
+    if (dropped?.soldBecauseFull) addLog(`Inventarul era plin. ${dropped.name} a fost convertit în ${dropped.value} gold.`);
+    else if (dropped) addLog(`Item drop: ${SLOTS[dropped.slot].emoji} ${dropped.name} (${dropped.rarity}).`);
     setBusy(false);
   }
 
@@ -490,7 +635,7 @@ function Battle({ game, setGame }) {
         <div className="section-title">
           <div>
             <h2>Battle Arena</h2>
-            <p>Luptă pe ture contra monștrilor.</p>
+            <p>Lupte pe ture. După victorie ai șansă de item drop.</p>
           </div>
           <button onClick={newEnemy}>Inamic nou</button>
         </div>
@@ -530,6 +675,138 @@ function Battle({ game, setGame }) {
   );
 }
 
+
+function ItemCard({ item, equipped, onEquip, onUnequip, onSell }) {
+  return (
+    <article className={`item-card rarity-${item.rarity}`}>
+      <div className="item-head">
+        <span className="item-icon">{SLOTS[item.slot].emoji}</span>
+        <div>
+          <h3>{item.name}</h3>
+          <p>{item.rarity} · {SLOTS[item.slot].label} · Lv. {item.level}</p>
+        </div>
+      </div>
+
+      <div className="item-stats">{itemStatsText(item)}</div>
+      <div className="item-meta">
+        <span>Power {item.power}</span>
+        <span>Value {item.value} gold</span>
+      </div>
+
+      <div className="item-actions">
+        {equipped ? (
+          <button onClick={() => onUnequip(item.slot)}>Unequip</button>
+        ) : (
+          <button className="primary" onClick={() => onEquip(item)}>Equip</button>
+        )}
+        <button className="danger" onClick={() => onSell(item, equipped)}>Sell</button>
+      </div>
+    </article>
+  );
+}
+
+function Inventory({ game, setGame }) {
+  const [filter, setFilter] = useState("all");
+  const stats = getHeroStats(game);
+  const filteredInventory = game.inventory
+    .filter((item) => filter === "all" || item.slot === filter)
+    .sort((a, b) => b.power - a.power);
+
+  function equipItem(item) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      const current = next.equipment[item.slot];
+      next.inventory = next.inventory.filter((i) => i.id !== item.id);
+      if (current) next.inventory.push(current);
+      next.equipment[item.slot] = item;
+      return next;
+    });
+  }
+
+  function unequip(slot) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      const current = next.equipment[slot];
+      if (!current) return prev;
+      if (next.inventory.length >= 60) {
+        next.resources.gold += current.value;
+        next.equipment[slot] = null;
+        return next;
+      }
+      next.inventory.push(current);
+      next.equipment[slot] = null;
+      return next;
+    });
+  }
+
+  function sellItem(item, equipped = false) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.resources.gold += item.value;
+      if (equipped) next.equipment[item.slot] = null;
+      else next.inventory = next.inventory.filter((i) => i.id !== item.id);
+      return next;
+    });
+  }
+
+  return (
+    <section className="grid inventory-layout">
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Echipament</h2>
+            <p>Itemele echipate cresc HP, attack, defense, mana și power.</p>
+          </div>
+          <div className="power-summary">👑 Power {stats.power}</div>
+        </div>
+
+        <div className="equipment-grid">
+          {Object.entries(SLOTS).map(([slot, info]) => {
+            const item = game.equipment[slot];
+            return (
+              <div className="equipment-slot" key={slot}>
+                <div className="slot-title">{info.emoji} {info.label}</div>
+                {item ? (
+                  <ItemCard item={item} equipped onUnequip={unequip} onSell={sellItem} />
+                ) : (
+                  <div className="empty-slot">Slot gol</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Inventar</h2>
+            <p>{game.inventory.length}/60 iteme. Primești drop-uri după lupte câștigate.</p>
+          </div>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="all">Toate</option>
+            {Object.entries(SLOTS).map(([slot, info]) => (
+              <option key={slot} value={slot}>{info.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {filteredInventory.length === 0 ? (
+          <div className="empty-inventory">
+            🎒 Inventarul este gol. Mergi la Luptă și câștigă bătălii pentru item drops.
+          </div>
+        ) : (
+          <div className="inventory-list">
+            {filteredInventory.map((item) => (
+              <ItemCard key={item.id} item={item} onEquip={equipItem} onSell={sellItem} />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Hero({ game, setGame }) {
   const stats = getHeroStats(game);
 
@@ -552,10 +829,10 @@ function Hero({ game, setGame }) {
         <Progress label="XP" value={game.xp} max={game.xpToNext} />
 
         <div className="grid two mini-stats">
-          <div>❤️ HP <b>{stats.hp}</b></div>
-          <div>⚔️ Attack <b>{stats.attack}</b></div>
-          <div>🛡️ Defense <b>{stats.defense}</b></div>
-          <div>🔮 Mana <b>{stats.mana}</b></div>
+          <div>❤️ HP <b>{stats.hp}</b><small>Gear +{stats.gear.hp}</small></div>
+          <div>⚔️ Attack <b>{stats.attack}</b><small>Gear +{stats.gear.attack}</small></div>
+          <div>🛡️ Defense <b>{stats.defense}</b><small>Gear +{stats.gear.defense}</small></div>
+          <div>🔮 Mana <b>{stats.mana}</b><small>Gear +{stats.gear.mana}</small></div>
         </div>
       </div>
 
@@ -620,7 +897,7 @@ function Game({ session }) {
 
       if (!hasSupabase || !session) {
         const raw = localStorage.getItem(LOCAL_KEY);
-        setGame(raw ? JSON.parse(raw) : null);
+        setGame(raw ? normalizeGame(JSON.parse(raw)) : null);
         setSaveStatus("Local");
         setLoading(false);
         return;
@@ -637,7 +914,7 @@ function Game({ session }) {
         console.error(error);
       }
 
-      setGame(data?.data || null);
+      setGame(data?.data ? normalizeGame(data.data) : null);
       setSaveStatus(data?.data ? "Cloud" : "New");
       setLoading(false);
     }
@@ -649,8 +926,10 @@ function Game({ session }) {
     if (!game || loading) return;
 
     const timer = window.setTimeout(async () => {
+      const normalized = normalizeGame(game);
+
       if (!hasSupabase || !session) {
-        localStorage.setItem(LOCAL_KEY, JSON.stringify(game));
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(normalized));
         setSaveStatus("Local");
         return;
       }
@@ -661,9 +940,9 @@ function Game({ session }) {
         .from("game_saves")
         .upsert({
           user_id: session.user.id,
-          player_name: game.playerName,
-          class_name: game.className,
-          data: game
+          player_name: normalized.playerName,
+          class_name: normalized.className,
+          data: normalized
         }, { onConflict: "user_id" });
 
       setSaveStatus(error ? "Eroare" : "Cloud");
@@ -704,6 +983,7 @@ function Game({ session }) {
       <nav className="tabs">
         <button className={tab === "city" ? "active" : ""} onClick={() => setTab("city")}>🏰 Oraș</button>
         <button className={tab === "battle" ? "active" : ""} onClick={() => setTab("battle")}>💀 Luptă</button>
+        <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>🎒 Inventory</button>
         <button className={tab === "hero" ? "active" : ""} onClick={() => setTab("hero")}>🧙 Erou</button>
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Questuri</button>
         <button className="danger-tab" onClick={resetSave}>Reset progres</button>
@@ -711,6 +991,7 @@ function Game({ session }) {
 
       {tab === "city" && <City game={game} setGame={setGame} />}
       {tab === "battle" && <Battle game={game} setGame={setGame} />}
+      {tab === "inventory" && <Inventory game={game} setGame={setGame} />}
       {tab === "hero" && <Hero game={game} setGame={setGame} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>

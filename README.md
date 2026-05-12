@@ -1,134 +1,64 @@
-# S-Fleet Fantasy War ⚔️
+# S-Fleet Fantasy War ⚔️ — Update 2
 
-Prima versiune MVP: browser fantasy RPG cu oraș, erou, clase, lupte pe ture, questuri, login/register și salvare progres cu Supabase.
+Update 2 adaugă sistemul de loot și echipamente.
 
-## Ce conține
+## Ce este nou
 
-- React + Vite
-- Supabase Auth pentru login/register
-- Supabase PostgreSQL pentru salvarea progresului
-- fallback demo local dacă nu sunt configurate variabilele Supabase
-- pregătit pentru Netlify
-- `netlify.toml`
-- script SQL în `supabase/schema.sql`
+- tab nou **Inventory**
+- item drops după lupte câștigate
+- rarități: Common, Rare, Epic, Legendary
+- sloturi de echipament: Weapon, Armor, Ring, Amulet
+- butoane Equip / Unequip / Sell
+- bonusuri pe iteme: HP, Attack, Defense, Mana
+- Power calculat și din echipamente
+- quest nou: Loot Collector
+- compatibilitate cu salvările existente
 
----
+## Important pentru Supabase
 
-## 1. Test local pe PC
+Nu trebuie să schimbi tabela Supabase.
 
-Instalează Node.js LTS, apoi în folderul proiectului rulează:
-
-```bash
-npm install
-npm run dev
-```
-
-Deschide adresa afișată în terminal, de obicei:
-
-```bash
-http://localhost:5173
-```
-
-Fără Supabase configurat, jocul rulează în modul demo local.
-
----
-
-## 2. Creează proiect Supabase
-
-1. Intră în Supabase.
-2. New project.
-3. Alege nume, parolă database și regiune.
-4. După creare, mergi la SQL Editor.
-5. Creează un query nou.
-6. Copiază tot conținutul din:
+Inventarul și echipamentele sunt salvate în același câmp JSONB:
 
 ```txt
-supabase/schema.sql
+game_saves.data
 ```
 
-7. Apasă Run.
+Dacă ai deja jocul live și progresul se salvează, trebuie doar să faci update la fișierele din GitHub.
 
----
+## Cum faci update pe GitHub
 
-## 3. Ia cheile Supabase
+1. Descarcă ZIP-ul.
+2. Dezarhivează-l.
+3. Intră în repository-ul GitHub al jocului.
+4. Încarcă / înlocuiește fișierele din pachet.
+5. Apasă **Commit changes**.
+6. Netlify va porni deploy automat.
 
-În Supabase Dashboard:
+## Dacă Netlify nu pornește automat
 
-1. Project Settings.
-2. API.
-3. Copiază:
-   - Project URL
-   - anon public key
-
-Creează local fișierul `.env.local` în rădăcina proiectului:
-
-```env
-VITE_SUPABASE_URL=https://PROJECT_ID.supabase.co
-VITE_SUPABASE_ANON_KEY=anon_key_aici
+```txt
+Netlify
+→ site-ul tău
+→ Deploys
+→ Trigger deploy
+→ Deploy site
 ```
 
-Apoi rulează iar:
+## Build settings Netlify
 
-```bash
-npm run dev
+```txt
+Build command: npm run build
+Publish directory: dist
+Base directory: gol
+Functions directory: gol
 ```
 
----
+## Environment variables rămân aceleași
 
-## 4. Upload pe GitHub
-
-1. Creează repository nou pe GitHub.
-2. Urcă toate fișierele din acest proiect.
-3. Nu urca `.env.local`.
-
----
-
-## 5. Deploy pe Netlify
-
-În Netlify:
-
-1. Add new site.
-2. Import an existing project.
-3. Alege GitHub.
-4. Selectează repository-ul jocului.
-5. Build command:
-
-```bash
-npm run build
-```
-
-6. Publish directory:
-
-```bash
-dist
-```
-
-7. La Environment variables adaugă:
-
-```env
+```txt
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
 ```
 
-8. Deploy.
-
----
-
-## 6. Important pentru test login
-
-Dacă Supabase cere confirmare email, ai două variante:
-
-- verifici emailul după register;
-- sau pentru test dezactivezi temporar email confirmation din Supabase Auth settings.
-
----
-
-## Următoarele update-uri recomandate
-
-1. Admin panel pentru balansare monștri și reward-uri.
-2. PvP asincron.
-3. Guilds.
-4. Shop cu iteme.
-5. Inventar și echipamente.
-6. Timer pentru construcții.
-7. Leaderboard.
+Nu pune parola bazei de date, nu pune service_role, nu pune secret key.
