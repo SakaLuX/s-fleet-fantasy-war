@@ -2159,3 +2159,110 @@ as $$
 $$;
 
 grant execute on function public.beta_testing_summary() to authenticated;
+
+-- =============================================================
+-- Update 68–73 · Production Cleanup + Launch + Economy Hardening
+-- Safe to run multiple times.
+-- =============================================================
+
+create table if not exists public.player_feedback_surveys (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  rating int not null default 5 check (rating between 1 and 5),
+  message text not null default '',
+  version text not null default 'Update 73',
+  status text not null default 'new',
+  created_at timestamptz not null default now()
+);
+
+alter table public.player_feedback_surveys enable row level security;
+
+drop policy if exists "Players can insert own feedback surveys" on public.player_feedback_surveys;
+create policy "Players can insert own feedback surveys"
+on public.player_feedback_surveys for insert to authenticated
+with check (auth.uid() = user_id or user_id is null);
+
+drop policy if exists "Players can read own feedback surveys" on public.player_feedback_surveys;
+create policy "Players can read own feedback surveys"
+on public.player_feedback_surveys for select to authenticated
+using (auth.uid() = user_id or public.is_admin_email(auth.email()));
+
+create table if not exists public.s_coin_package_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  contact_email text,
+  amount int not null default 0 check (amount >= 0 and amount <= 100000),
+  note text not null default '',
+  status text not null default 'pending',
+  version text not null default 'Update 73',
+  reviewed_by text,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.s_coin_package_requests enable row level security;
+
+drop policy if exists "Players can create s coin package requests" on public.s_coin_package_requests;
+create policy "Players can create s coin package requests"
+on public.s_coin_package_requests for insert to authenticated
+with check (auth.uid() = user_id or user_id is null);
+
+drop policy if exists "Players can read own s coin package requests" on public.s_coin_package_requests;
+create policy "Players can read own s coin package requests"
+on public.s_coin_package_requests for select to authenticated
+using (auth.uid() = user_id or public.is_admin_email(auth.email()));
+
+drop policy if exists "Admins can update s coin package requests" on public.s_coin_package_requests;
+create policy "Admins can update s coin package requests"
+on public.s_coin_package_requests for update to authenticated
+using (public.is_admin_email(auth.email()))
+with check (public.is_admin_email(auth.email()));
+
+create table if not exists public.launch_readiness_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  readiness int not null default 0 check (readiness between 0 and 100),
+  notes text not null default '',
+  version text not null default 'Update 73',
+  created_at timestamptz not null default now()
+);
+
+alter table public.launch_readiness_logs enable row level security;
+
+drop policy if exists "Players can insert own launch readiness logs" on public.launch_readiness_logs;
+create policy "Players can insert own launch readiness logs"
+on public.launch_readiness_logs for insert to authenticated
+with check (auth.uid() = user_id or user_id is null);
+
+drop policy if exists "Admins can read launch readiness logs" on public.launch_readiness_logs;
+create policy "Admins can read launch readiness logs"
+on public.launch_readiness_logs for select to authenticated
+using (auth.uid() = user_id or public.is_admin_email(auth.email()));
+
+create or replace function public.admin_update73_summary()
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  select case
+    when not public.is_admin_email(auth.email()) then jsonb_build_object('error', 'not_admin')
+    else jsonb_build_object(
+      'version', 'Update 73 · Server-Side Economy Hardening',
+      'players', (select count(*) from public.game_saves),
+      'feedback', (select count(*) from public.player_feedback_surveys),
+      's_coin_requests_pending', (select count(*) from public.s_coin_package_requests where status = 'pending'),
+      'launch_logs', (select count(*) from public.launch_readiness_logs),
+      'systems', jsonb_build_array(
+        'Update 68 · Production Cleanup + Launch Preparation',
+        'Update 69 · Real Art Pack + Icons',
+        'Update 70 · Beta Launch v1',
+        'Update 71 · Feedback System + Player Survey',
+        'Update 72 · S-Coin Monetization Admin Flow',
+        'Update 73 · Server-Side Economy Hardening'
+      )
+    )
+  end;
+$$;
+
+grant execute on function public.admin_update73_summary() to authenticated;

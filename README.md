@@ -1,49 +1,35 @@
-# S-Fleet Fantasy War ⚔️ — Update 61–67
+# S-Fleet Fantasy War ⚔️ — Update 73
 
-Current live badge: **Update 67 · Beta Testing Tools**.
+This package contains **Update 68–73** on top of the existing beta build.
 
-This bundle is built on the latest English/Supabase version and includes the full UI/polish/testing pass:
+## Current badge
+
+```txt
+Update 73 · Server-Side Economy Hardening
+```
 
 ## Included updates
 
-- **Update 61 · UI Cleanup + Game Polish**
-  - grouped navigation
-  - cleaner game sections
-  - admin tools separated from normal player tools
-- **Update 62 · Better Battle Animations**
-  - critical/block/dodge/spell visual feedback pack
-- **Update 63 · Real Assets / Fantasy Graphics Pack**
-  - fantasy art direction cards and visual system
-- **Update 64 · Better City Map**
-  - polished city district overview
-- **Update 65 · Server-Side Economy Hardening**
-  - economy audit checklist and premium-currency protection plan
-- **Update 66 · Public Landing Page + Game Rules**
-  - beta rules, player-facing launch notes and rules acknowledgement support
-- **Update 67 · Beta Testing Tools**
-  - QA checklist
-  - tester notes
-  - debug export
-  - beta readiness score
-  - Supabase beta testing summary tables/functions
+- **Update 68 · Real Production Cleanup + Launch Preparation**
+- **Update 69 · Real Art Pack + Icons**
+- **Update 70 · Beta Launch v1**
+- **Update 71 · Feedback System + Player Survey**
+- **Update 72 · S-Coin Monetization Admin Flow**
+- **Update 73 · Server-Side Economy Hardening**
 
-## Build settings on Netlify
+## What changed
 
-```txt
-Build command: npm run build
-Publish directory: dist
-Base directory: empty
-Functions directory: empty
-```
+- cleaner launch panel
+- starter pack for new/beta players
+- beta rules acceptance
+- feedback/survey panel
+- manual S-Coin package request flow
+- admin economy hardening panel
+- marketplace safety caps
+- Update 73 changelog entries
+- Supabase SQL for feedback, S-Coin package requests and launch readiness logs
 
-## Environment variables
-
-```txt
-VITE_SUPABASE_URL
-VITE_SUPABASE_ANON_KEY
-```
-
-## Supabase SQL
+## Supabase
 
 Run the full file:
 
@@ -57,14 +43,20 @@ in:
 Supabase → SQL Editor → New query → Run
 ```
 
-The Update 61–67 SQL is safe to run multiple times and adds:
+## Netlify
 
-- `beta_test_reports`
-- `economy_audit_logs`
-- `game_rules_acknowledgements`
-- `beta_testing_summary()`
-- safe admin helper function `is_admin_email(text)` if it is missing
+Same settings as before:
 
-## Deploy
+```txt
+Build command: npm run build
+Publish directory: dist
+Base directory: empty
+Functions directory: empty
+```
 
-Upload/replace all files in GitHub, then Netlify will deploy automatically.
+Environment variables remain:
+
+```txt
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```

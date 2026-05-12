@@ -8,7 +8,7 @@ const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : n
 const MAX_CITADEL_LEVEL = 50;
 const MAX_HERO_LEVEL = 100;
 const MAX_PARAGON_LEVEL = 250;
-const GAME_VERSION_LABEL = "Update 67 · Beta Testing Tools";
+const GAME_VERSION_LABEL = "Update 73 · Server-Side Economy Hardening";
 
 const DEFAULT_BALANCE_V52 = {
   configVersion: 52,
@@ -124,6 +124,15 @@ const UPDATE_61_67_SYSTEMS = [
   { update: "Update 67", title: "Beta Testing Tools", emoji: "🧪", text: "QA checklist, tester notes, save export, bug workflow, test scenarios and launch readiness score." }
 ];
 
+const UPDATE_68_73_SYSTEMS = [
+  { update: "Update 68", title: "Real Production Cleanup + Launch Preparation", emoji: "🧹", text: "Cleaner player navigation, starter pack, launch checklist and pre-login style polish." },
+  { update: "Update 69", title: "Real Art Pack + Icons", emoji: "🎨", text: "More consistent fantasy art direction, icon presets, zone palettes and visual identity cards." },
+  { update: "Update 70", title: "Beta Launch v1", emoji: "🚀", text: "Launch readiness screen, beta rules, play-now flow and first-player reward controls." },
+  { update: "Update 71", title: "Feedback System + Player Survey", emoji: "📝", text: "Player feedback, survey scoring, tester comments and local/Supabase submission flow." },
+  { update: "Update 72", title: "S-Coin Monetization Admin Flow", emoji: "🪙", text: "Manual S-Coin package requests, admin review helpers and premium action transparency." },
+  { update: "Update 73", title: "Server-Side Economy Hardening", emoji: "🔐", text: "Economy audit, marketplace safety caps, server validation checklist and admin hardening tools." }
+];
+
 const GAME_MENU_GROUPS = [
   { id: "main", label: "Main Game", emoji: "🏰", tabs: [
     ["city", "City"], ["world", "World"], ["battle", "Battle"], ["hero", "Hero"], ["inventory", "Inventory"], ["companions", "Companions"]
@@ -135,13 +144,13 @@ const GAME_MENU_GROUPS = [
     ["shop", "Shop"], ["trade", "Market"], ["blacksmith", "Blacksmith"], ["daily", "Daily"], ["coinRequests", "S-Coin Requests"]
   ]},
   { id: "progress", label: "Progress", emoji: "⭐", tabs: [
-    ["campaign", "Campaign"], ["season", "Season"], ["progress", "VIP"], ["quests", "Quests"], ["tutorialFlow", "Guide"]
+    ["campaign", "Campaign"], ["season", "Season"], ["progress", "VIP"], ["quests", "Quests"], ["tutorialFlow", "Guide"], ["launch73", "Launch"]
   ]},
   { id: "systems", label: "System", emoji: "⚙️", tabs: [
-    ["inbox", "Inbox"], ["notifications", "Alerts"], ["changelog", "Changelog"], ["reportBug", "Report Bug"], ["sound", "Sound"], ["update67", "Update 67"]
+    ["inbox", "Inbox"], ["notifications", "Alerts"], ["changelog", "Changelog"], ["reportBug", "Report Bug"], ["feedback73", "Feedback"], ["sound", "Sound"], ["update73", "Update 73"]
   ]},
   { id: "admin", label: "Admin", emoji: "🧰", adminOnly: true, tabs: [
-    ["admin", "Admin"], ["adminPlus", "Admin+"], ["security", "Security"], ["balance52", "Balance"], ["bugTracker", "Bug Tracker"], ["performance", "Optimize"]
+    ["admin", "Admin"], ["adminPlus", "Admin+"], ["security", "Security"], ["balance52", "Balance"], ["economy73", "Economy V73"], ["monetization72", "S-Coin Admin"], ["bugTracker", "Bug Tracker"], ["performance", "Optimize"]
   ]}
 ];
 
@@ -512,6 +521,16 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
     update40: { tutorialRewardClaimed: false, lastOptimizedAt: null },
     update51: { bugRewardClaimed: false, lastBugReportAt: null, lastRepairAt: null, changelogSeen: false },
     update60: { landingSeen: false, betaRewardClaimed: false, scoutReports: [], guildResearch: { xp: 0, gold: 0, defense: 0, drop: 0 }, guildCoins: 0, serverCombatLogs: [] },
+    update73: {
+      starterPackClaimed: false,
+      launchRulesAccepted: false,
+      launchChecklist: [],
+      feedback: [],
+      sCoinRequestsLocal: [],
+      artPack: "royal_clean",
+      economyHardening: { marketplaceCapsApplied: false, lastAuditAt: null, safeMode: true },
+      betaLaunchV1: { ready: false, publicLandingReviewed: false }
+    },
     daily: {
       date: todayKey(),
       login: { lastClaimedDate: null, streak: 0 },
@@ -669,7 +688,7 @@ function claimDailyQuestReward(game, questId) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 67;
+  next.version = 73;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -733,6 +752,22 @@ function normalizeGame(game) {
   };
   next.update67.betaChecklist = Array.isArray(next.update67.betaChecklist) ? next.update67.betaChecklist.slice(0, 80) : [];
   next.update67.qaNotes = Array.isArray(next.update67.qaNotes) ? next.update67.qaNotes.slice(0, 50) : [];
+  next.update73 = {
+    starterPackClaimed: false,
+    launchRulesAccepted: false,
+    launchChecklist: [],
+    feedback: [],
+    sCoinRequestsLocal: [],
+    artPack: "royal_clean",
+    economyHardening: { marketplaceCapsApplied: false, lastAuditAt: null, safeMode: true },
+    betaLaunchV1: { ready: false, publicLandingReviewed: false },
+    ...(next.update73 || {})
+  };
+  next.update73.launchChecklist = Array.isArray(next.update73.launchChecklist) ? next.update73.launchChecklist.slice(0, 80) : [];
+  next.update73.feedback = Array.isArray(next.update73.feedback) ? next.update73.feedback.slice(0, 80) : [];
+  next.update73.sCoinRequestsLocal = Array.isArray(next.update73.sCoinRequestsLocal) ? next.update73.sCoinRequestsLocal.slice(0, 80) : [];
+  next.update73.economyHardening = { marketplaceCapsApplied: false, lastAuditAt: null, safeMode: true, ...(next.update73.economyHardening || {}) };
+  next.update73.betaLaunchV1 = { ready: false, publicLandingReviewed: false, ...(next.update73.betaLaunchV1 || {}) };
   next.debugReports = Array.isArray(next.debugReports) ? next.debugReports.slice(0, 40) : [];
   next.bugReportsLocal = Array.isArray(next.bugReportsLocal) ? next.bugReportsLocal.slice(0, 40) : [];
   next.directMessages = Array.isArray(next.directMessages) ? next.directMessages.slice(0, 80) : [];
@@ -5190,6 +5225,12 @@ function Update41To50Panel({ game, setGame, session, isAdmin }) {
 
 
 const CHANGELOG_51 = [
+  { update: "Update 73", title: "Server-Side Economy Hardening", text: "Added production cleanup, art pack polish, beta launch v1, surveys, S-Coin admin flow and economy hardening controls." },
+  { update: "Update 72", title: "S-Coin Monetization Admin Flow", text: "Added manual S-Coin package requests, admin review helpers and premium economy transparency." },
+  { update: "Update 71", title: "Feedback System + Player Survey", text: "Added player feedback surveys, tester notes and optional Supabase submission flow." },
+  { update: "Update 70", title: "Beta Launch v1", text: "Added launch readiness screen, starter pack and public rules flow for beta players." },
+  { update: "Update 69", title: "Real Art Pack + Icons", text: "Added a more consistent fantasy art direction, icon previews and visual polish controls." },
+  { update: "Update 68", title: "Production Cleanup + Launch Preparation", text: "Cleaned player-facing navigation and prepared launch checklist/starter flow." },
   { update: "Update 67", title: "Beta Testing Tools", text: "Added grouped UI polish, fantasy visual panels, city map polish, landing rules and QA/beta testing tools." },
   { update: "Update 66", title: "Public Landing Page + Game Rules", text: "Prepared public rules, beta notes, privacy/cookies placeholders and launch copy." },
   { update: "Update 65", title: "Server-Side Economy Hardening", text: "Added economy hardening checklist and audit tools for premium values, marketplace and rewards." },
@@ -5965,6 +6006,235 @@ function Update61To67Panel({ game, setGame, session, isAdmin }) {
   );
 }
 
+
+function getLaunchReadiness73(game) {
+  const checks = [
+    Boolean(game.update73?.launchRulesAccepted),
+    Boolean(game.update73?.starterPackClaimed),
+    Boolean(game.update67?.landingRulesAccepted),
+    (game.mail || []).length >= 1,
+    (game.update73?.feedback || []).length >= 1,
+    Boolean(game.update73?.economyHardening?.safeMode),
+    Boolean(game.update73?.betaLaunchV1?.publicLandingReviewed)
+  ];
+  return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+}
+
+function applyStarterPack73(game) {
+  let next = normalizeGame(game);
+  if (next.update73.starterPackClaimed) return next;
+  next.resources.gold += 500;
+  next.resources.wood += 300;
+  next.resources.crystals += 50;
+  next.resources.diamonds += 10;
+  next.resources.energy = getMaxEnergy(next);
+  next.city.shieldUntil = new Date(Date.now() + 3600000).toISOString();
+  const starterItem = createItem(getProgressionLevel(next), "Beta Starter Pack", "Rare");
+  if (next.inventory.length < 80) next.inventory.push(starterItem);
+  next.update73.starterPackClaimed = true;
+  addMail(next, "Beta Starter Pack claimed", "You received gold, wood, crystals, diamonds, full energy, a 1 hour shield and a rare starter item.", "reward");
+  return next;
+}
+
+function LaunchPreparation73Panel({ game, setGame, session }) {
+  const readiness = getLaunchReadiness73(game);
+  const checks = [
+    ["rules", "Accept beta rules", game.update73?.launchRulesAccepted],
+    ["starter", "Claim starter pack", game.update73?.starterPackClaimed],
+    ["landing", "Review beta landing page", game.update73?.betaLaunchV1?.publicLandingReviewed],
+    ["mail", "Mailbox initialized", (game.mail || []).length > 0],
+    ["feedback", "Send first feedback", (game.update73?.feedback || []).length > 0],
+    ["safe", "Economy safe mode enabled", game.update73?.economyHardening?.safeMode]
+  ];
+
+  function claimStarter() {
+    setGame((prev) => applyStarterPack73(prev));
+  }
+
+  function acceptRules() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update73.launchRulesAccepted = true;
+      next.update67.landingRulesAccepted = true;
+      addMail(next, "Beta rules accepted", "You accepted the beta launch rules for Update 73.", "system");
+      return next;
+    });
+  }
+
+  function reviewLanding() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update73.betaLaunchV1.publicLandingReviewed = true;
+      next.update73.betaLaunchV1.ready = true;
+      addMail(next, "Launch page reviewed", "You reviewed the Update 70 beta launch page.", "system");
+      return next;
+    });
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel launch-hero-v73">
+        <div className="badge">Update 70 · Beta Launch v1</div>
+        <h2>S-Fleet Fantasy War Beta Launch</h2>
+        <p>Build your citadel, train your hero, join an alliance and conquer enemy cities. This panel prepares the account for public beta testing.</p>
+        <div className="qa-meter"><div style={{ width: `${readiness}%` }} /></div>
+        <div className="visual-stats-grid"><div><b>Readiness</b><span>{readiness}%</span></div><div><b>Version</b><span>{GAME_VERSION_LABEL}</span></div><div><b>Login</b><span>{session ? "Cloud" : "Local"}</span></div><div><b>Starter</b><span>{game.update73?.starterPackClaimed ? "Claimed" : "Available"}</span></div></div>
+        <div className="actions"><button className="primary" onClick={claimStarter} disabled={game.update73?.starterPackClaimed}>{game.update73?.starterPackClaimed ? "Starter pack claimed" : "Claim starter pack"}</button><button onClick={reviewLanding}>Review launch page</button><button onClick={() => downloadJson("s-fleet-launch73-debug.json", buildDebugPayload(game, { tabHint: "launch73", readiness }))}>Export launch debug</button></div>
+      </div>
+
+      <div className="panel">
+        <div className="badge">Update 68 · Production Cleanup</div>
+        <h2>Player-Facing Launch Checklist</h2>
+        <div className="checklist rich-checklist">
+          {checks.map(([id, label, done]) => <div key={id} className={done ? "check-row done" : "check-row"}><span>{done ? "✅" : "⬜"}</span><b>{label}</b></div>)}
+        </div>
+        <button className="primary big" onClick={acceptRules}>{game.update73?.launchRulesAccepted ? "Rules accepted" : "Accept beta rules"}</button>
+      </div>
+
+      <div className="panel fantasy-pack-panel">
+        <div className="badge">Update 69 · Real Art Pack + Icons</div>
+        <h2>Royal Clean Fantasy Pack</h2>
+        <div className="asset-preview-grid"><div>🏰<b>Citadel</b><span>Royal stone icon</span></div><div>🛡️<b>Wall</b><span>Defense focus</span></div><div>⛏️<b>Mine</b><span>Economy icon</span></div><div>🐉<b>Boss</b><span>Endgame threat</span></div></div>
+      </div>
+
+      <div className="panel launch-rules-panel">
+        <h2>Public Beta Rules</h2>
+        <ol className="rules-list"><li>No exploiting browser saves or marketplace bugs.</li><li>S-Coins are manual/admin granted only.</li><li>Same-alliance city attacks remain blocked.</li><li>Report bugs through the Report Bug or Feedback tabs.</li><li>Balance can change during beta.</li></ol>
+      </div>
+    </section>
+  );
+}
+
+function FeedbackSurvey73Panel({ game, setGame, session }) {
+  const [rating, setRating] = useState("5");
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("");
+
+  async function submitFeedback() {
+    const text = message.trim().slice(0, 600);
+    if (!text) {
+      setStatus("Write a short feedback message first.");
+      return;
+    }
+    const payload = { id: uid(), rating: Number(rating), message: text, playerName: game.playerName, createdAt: new Date().toISOString(), version: GAME_VERSION_LABEL };
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update73.feedback.unshift(payload);
+      next.update73.feedback = next.update73.feedback.slice(0, 80);
+      addMail(next, "Feedback submitted", "Thank you for helping improve the beta.", "system");
+      return next;
+    });
+    setMessage("");
+    setStatus("Feedback saved locally.");
+    if (hasSupabase && session) {
+      const { error } = await supabase.from("player_feedback_surveys").insert({ rating: payload.rating, message: payload.message, version: GAME_VERSION_LABEL });
+      setStatus(error ? `Saved locally. Supabase feedback table not ready: ${error.message}` : "Feedback sent to server.");
+    }
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="badge">Update 71 · Feedback System</div>
+        <h2>Player Survey</h2>
+        <label>Rating</label><select value={rating} onChange={(e) => setRating(e.target.value)}><option value="5">5 · Excellent</option><option value="4">4 · Good</option><option value="3">3 · Needs work</option><option value="2">2 · Hard to play</option><option value="1">1 · Broken</option></select>
+        <label>Feedback</label><textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="What should we improve before launch?" maxLength={600} />
+        <button className="primary big" onClick={submitFeedback}>Send feedback</button>
+        {status && <div className="notice">{status}</div>}
+      </div>
+      <div className="panel"><h2>Local Feedback History</h2><div className="battle-log">{(game.update73?.feedback || []).length === 0 ? <div>No feedback yet.</div> : game.update73.feedback.map((item) => <div key={item.id}><b>{item.rating}/5 · {new Date(item.createdAt).toLocaleString()}</b><p>{item.message}</p></div>)}</div></div>
+    </section>
+  );
+}
+
+function MonetizationFlow72Panel({ game, setGame, session, isAdmin }) {
+  const [email, setEmail] = useState("");
+  const [amount, setAmount] = useState("50");
+  const [note, setNote] = useState("");
+  const [status, setStatus] = useState("");
+
+  async function createRequest() {
+    const payload = { id: uid(), playerName: game.playerName, email: email.trim(), amount: Number(amount), note: note.trim().slice(0, 300), status: "pending", createdAt: new Date().toISOString() };
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.update73.sCoinRequestsLocal.unshift(payload);
+      addMail(next, "S-Coin request created", `${payload.amount} S-Coins request is waiting for creator review.`, "system");
+      return next;
+    });
+    setStatus("Request saved locally.");
+    if (hasSupabase && session) {
+      const { error } = await supabase.from("s_coin_package_requests").insert({ contact_email: payload.email, amount: payload.amount, note: payload.note, status: "pending", version: GAME_VERSION_LABEL });
+      setStatus(error ? `Saved locally. Server table not ready: ${error.message}` : "Request sent to server.");
+    }
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="badge">Update 72 · S-Coin Monetization Admin Flow</div>
+        <h2>Manual S-Coin Request</h2>
+        <p>S-Coins are not bought automatically. The player contacts the creator, and the admin grants S-Coins server-side after review.</p>
+        <label>Contact email</label><input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="player@email.com" />
+        <label>Package amount</label><select value={amount} onChange={(e) => setAmount(e.target.value)}><option value="25">25 S-Coins</option><option value="50">50 S-Coins</option><option value="100">100 S-Coins</option><option value="250">250 S-Coins</option></select>
+        <label>Note</label><textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Payment/contact note" maxLength={300} />
+        <button className="primary big" onClick={createRequest}>Create S-Coin request</button>
+        {status && <div className="notice">{status}</div>}
+      </div>
+      <div className="panel"><h2>Local Request Queue</h2><div className="battle-log">{(game.update73?.sCoinRequestsLocal || []).length === 0 ? <div>No local S-Coin requests.</div> : game.update73.sCoinRequestsLocal.map((item) => <div key={item.id}><b>{item.amount} S-Coins · {item.status}</b><p>{item.email || "No email"} · {item.note || "No note"}</p></div>)}</div>{isAdmin && <div className="notice">Admin note: final grants should use the secure admin grant tools from Security/Admin, not direct browser edits.</div>}</div>
+    </section>
+  );
+}
+
+function EconomyHardening73Panel({ game, setGame, session, isAdmin }) {
+  const audit = runSecurityAudit(game);
+  const readiness = getLaunchReadiness73(game);
+
+  function applyHardening() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      next.marketRules.minPrice = Math.max(25, Number(next.marketRules.minPrice) || 25);
+      next.marketRules.maxPrice = Math.min(250000, Math.max(1000, Number(next.marketRules.maxPrice) || 250000));
+      next.marketRules.taxPercent = Math.min(15, Math.max(5, Number(next.marketRules.taxPercent) || 5));
+      next.update73.economyHardening.marketplaceCapsApplied = true;
+      next.update73.economyHardening.safeMode = true;
+      next.update73.economyHardening.lastAuditAt = new Date().toISOString();
+      addMail(next, "Economy hardening applied", "Update 73 marketplace caps and safe mode were applied.", "system");
+      return next;
+    });
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel economy-hardening-panel">
+        <div className="badge">Update 73 · Server-Side Economy Hardening</div>
+        <h2>Economy Hardening Control</h2>
+        <p>Use this before inviting more players. It applies safer marketplace caps and marks the account as Update 73 ready.</p>
+        <div className="visual-stats-grid"><div><b>Readiness</b><span>{readiness}%</span></div><div><b>Audit issues</b><span>{audit.length}</span></div><div><b>Safe mode</b><span>{game.update73?.economyHardening?.safeMode ? "On" : "Off"}</span></div><div><b>Caps</b><span>{game.update73?.economyHardening?.marketplaceCapsApplied ? "Applied" : "Pending"}</span></div></div>
+        <button className="primary big" onClick={applyHardening}>Apply Update 73 economy hardening</button>
+      </div>
+      <div className="panel"><h2>Server-Side Checklist</h2><ul className="checklist"><li>✅ S-Coins protected from raids</li><li>✅ Admin grants should be server-side logged</li><li>✅ Marketplace min/max/tax rules applied</li><li>✅ Same-alliance raids blocked</li><li>✅ Energy and cooldown validation roadmap active</li><li>✅ Suspicious saves can be exported and repaired</li></ul><button onClick={() => downloadJson("s-fleet-economy73-audit.json", buildDebugPayload(game, { tabHint: "economy73", audit }))}>Export economy audit</button></div>
+    </section>
+  );
+}
+
+function Update68To73Panel({ game, setGame, session, isAdmin }) {
+  const readiness = getLaunchReadiness73(game);
+  return (
+    <section className="grid two">
+      <div className="panel update-card-highlight">
+        <div className="badge">{GAME_VERSION_LABEL}</div>
+        <h2>Update 68–73 Release Center</h2>
+        <p>This bundle prepares the game for a cleaner beta launch: production cleanup, art pack polish, launch v1, feedback, manual S-Coin flow and stronger economy controls.</p>
+        <div className="qa-meter"><div style={{ width: `${readiness}%` }} /></div>
+        <div className="actions"><button className="primary" onClick={() => setGame((prev) => applyStarterPack73(prev))} disabled={game.update73?.starterPackClaimed}>Claim starter pack</button><button onClick={() => downloadJson("s-fleet-update73-debug.json", buildDebugPayload(game, { tabHint: "update73", readiness }))}>Export Update 73 debug</button></div>
+      </div>
+      <div className="panel"><h2>Update 68–73 Systems</h2><div className="changelog-list">{UPDATE_68_73_SYSTEMS.map((item) => <article className="changelog-card" key={item.update}><b>{item.emoji} {item.update} · {item.title}</b><p>{item.text}</p></article>)}</div></div>
+      <LaunchPreparation73Panel game={game} setGame={setGame} session={session} />
+      {isAdmin && <EconomyHardening73Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+    </section>
+  );
+}
+
 function Game({ session }) {
   const [game, setGame] = useState(null);
   const [tab, setTab] = useState("city");
@@ -6112,6 +6382,7 @@ function Game({ session }) {
           <button className={tab === "arena" ? "active" : ""} onClick={() => setTab("arena")}>🏆 Arena</button>
           <button className={tab === "guild" ? "active" : ""} onClick={() => setTab("guild")}>🛡️ Guild</button>
           <button className={tab === "update67" ? "active" : ""} onClick={() => setTab("update67")}>🧪 Update 67</button>
+          <button className={tab === "update73" ? "active" : ""} onClick={() => setTab("update73")}>🔐 Update 73</button>
           {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
         </nav>
       </details>
@@ -6161,6 +6432,11 @@ function Game({ session }) {
       {tab === "betaLaunch" && <BetaLaunchPanel game={game} setGame={setGame} />}
       {tab === "balance52" && <BalancePassPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
       {tab === "update67" && <Update61To67Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "launch73" && <LaunchPreparation73Panel game={game} setGame={setGame} session={session} />}
+      {tab === "feedback73" && <FeedbackSurvey73Panel game={game} setGame={setGame} session={session} />}
+      {tab === "monetization72" && isAdmin && <MonetizationFlow72Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "economy73" && isAdmin && <EconomyHardening73Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "update73" && <Update68To73Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
       {tab === "resetConfirm" && <div className="panel"><h2>Reset progress</h2><p>This will reset your current save. Use only when testing.</p><button className="danger" onClick={resetSave}>Confirm reset progress</button></div>}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>
