@@ -6,7 +6,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const hasSupabase = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v4";
+const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v5";
 
 const CLASSES = {
   Knight: {
@@ -202,13 +202,15 @@ const QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 4,
+    version: 5,
     playerName,
     className,
     level: 1,
     xp: 0,
     xpToNext: 100,
     resources: { gold: 350, wood: 220, crystals: 45, energy: 12 },
+    city: { lastResourceCollectionAt: null },
+    classLocked: true,
     buildings: {
       citadel: { level: 1 },
       barracks: { level: 1 },
@@ -231,8 +233,10 @@ function clone(value) {
 function normalizeGame(game) {
   if (!game) return null;
   const next = clone(game);
-  next.version = 4;
+  next.version = 5;
   next.resources = { gold: 0, wood: 0, crystals: 0, energy: 0, ...(next.resources || {}) };
+  next.city = { lastResourceCollectionAt: null, ...(next.city || {}) };
+  next.classLocked = true;
   next.buildings = {
     citadel: { level: 1 },
     barracks: { level: 1 },
@@ -355,6 +359,68 @@ function getHeroStats(game) {
   return { hp, attack, defense, mana, power, gear };
 }
 
+function getMaxEnergy(game) {
+  return 20 + game.level + game.buildings.citadel.level;
+}
+
+function getHourlyIncome(game) {
+  return {
+    gold: 80 + game.buildings.mine.level * 35,
+    wood: 45 + game.buildings.citadel.level * 18,
+    crystals: 5 + game.buildings.academy.level * 3
+  };
+}
+
+function getCollectionState(game, now = Date.now()) {
+  const last = game.city?.lastResourceCollectionAt ? new Date(game.city.lastResourceCollectionAt).getTime() : 0;
+  if (!last || Number.isNaN(last)) {
+    return { ready: true, hours: 1, remainingMs: 0, nextAt: null };
+  }
+
+  const elapsedMs = Math.max(0, now - last);
+  const fullHours = Math.floor(elapsedMs / 3600000);
+  const remainingMs = fullHours >= 1 ? 0 : 3600000 - elapsedMs;
+
+  return {
+    ready: fullHours >= 1,
+    hours: Math.min(24, Math.max(1, fullHours)),
+    remainingMs,
+    nextAt: last + 3600000
+  };
+}
+
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function applyHourlyCollection(game, now = Date.now()) {
+  const next = normalizeGame(game);
+  const state = getCollectionState(next, now);
+  if (!state.ready) return { game: next, collected: null };
+
+  const income = getHourlyIncome(next);
+  const hours = state.hours;
+  const collected = {
+    hours,
+    gold: income.gold * hours,
+    wood: income.wood * hours,
+    crystals: income.crystals * hours,
+    energyBefore: next.resources.energy,
+    energyAfter: getMaxEnergy(next)
+  };
+
+  next.resources.gold += collected.gold;
+  next.resources.wood += collected.wood;
+  next.resources.crystals += collected.crystals;
+  next.resources.energy = getMaxEnergy(next);
+  next.city.lastResourceCollectionAt = new Date(now).toISOString();
+
+  return { game: next, collected };
+}
+
 function applyReward(game, reward) {
   const next = clone(game);
   next.resources.gold += reward.gold || 0;
@@ -366,9 +432,10 @@ function applyReward(game, reward) {
     next.xp -= next.xpToNext;
     next.level += 1;
     next.xpToNext = Math.round(next.xpToNext * 1.35);
-    next.resources.energy += 4;
+    next.resources.energy = Math.min(getMaxEnergy(next), next.resources.energy + 4);
   }
 
+  next.resources.energy = Math.min(next.resources.energy, getMaxEnergy(next));
   return next;
 }
 
@@ -550,13 +617,14 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 3 · World Map</div>
+        <div className="badge">Update 4 · Hourly Kingdom</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{game.playerName} · Level {game.level} · {game.className}</p>
       </div>
 
       <div className="top-actions">
         <div className="stat-box">👑 <b>{stats.power}</b><span>Power</span></div>
+        <div className="stat-box">🏆 <b>{game.stats.wins}</b><span>Wins</span></div>
         <div className="stat-box">🎒 <b>{totalItemCount(game)}</b><span>Items</span></div>
         <div className="stat-box">💾 <b>{saveStatus}</b><span>Save</span></div>
         {session && <button className="danger" onClick={onLogout}>Logout</button>}
@@ -566,12 +634,14 @@ function TopBar({ game, session, onLogout, saveStatus }) {
 }
 
 function Resources({ game }) {
+  const maxEnergy = getMaxEnergy(game);
+
   return (
     <section className="resources">
       <div className="resource">🪙 <span>Gold</span><b>{game.resources.gold}</b></div>
       <div className="resource">🪵 <span>Wood</span><b>{game.resources.wood}</b></div>
       <div className="resource">💎 <span>Crystals</span><b>{game.resources.crystals}</b></div>
-      <div className="resource">⚡ <span>Energy</span><b>{game.resources.energy}</b></div>
+      <div className="resource">⚡ <span>Energy</span><b>{game.resources.energy}/{maxEnergy}</b></div>
     </section>
   );
 }
@@ -587,15 +657,19 @@ function Progress({ label, value, max }) {
 }
 
 function City({ game, setGame }) {
+  const [now, setNow] = useState(Date.now());
+  const collectionState = getCollectionState(game, now);
+  const hourlyIncome = getHourlyIncome(game);
+  const maxEnergy = getMaxEnergy(game);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   function collect() {
-    setGame((prev) => {
-      const next = clone(prev);
-      next.resources.gold += 80 + next.buildings.mine.level * 35;
-      next.resources.wood += 45 + next.buildings.citadel.level * 18;
-      next.resources.crystals += 5 + next.buildings.academy.level * 3;
-      next.resources.energy = Math.min(20 + next.level, next.resources.energy + 3);
-      return next;
-    });
+    setGame((prev) => applyHourlyCollection(prev, Date.now()).game);
+    setNow(Date.now());
   }
 
   function upgrade(key) {
@@ -616,9 +690,17 @@ function City({ game, setGame }) {
       <div className="section-title">
         <div>
           <h2>Orașul tău</h2>
-          <p>Upgrade-urile cresc puterea eroului și producția de resurse.</p>
+          <p>Colectarea merge o singură dată pe oră. Dacă trec mai multe ore, strângi până la 24h de producție.</p>
         </div>
-        <button className="primary" onClick={collect}>Colectează resurse</button>
+        <button className="primary" disabled={!collectionState.ready} onClick={collect}>
+          {collectionState.ready ? "Colectează resurse" : `Disponibil în ${formatCountdown(collectionState.remainingMs)}`}
+        </button>
+      </div>
+
+      <div className="collect-panel">
+        <div><b>Producție / oră</b><span>{hourlyIncome.gold} gold · {hourlyIncome.wood} wood · {hourlyIncome.crystals} crystals</span></div>
+        <div><b>Ore pregătite</b><span>{collectionState.ready ? collectionState.hours : 0}h</span></div>
+        <div><b>Energie la colectare</b><span>se umple la maxim: {maxEnergy}</span></div>
       </div>
 
       <div className="grid four">
@@ -1162,19 +1244,16 @@ function Inventory({ game, setGame }) {
   );
 }
 
-function Hero({ game, setGame }) {
+function Hero({ game }) {
   const stats = getHeroStats(game);
-
-  function changeClass(className) {
-    setGame((prev) => ({ ...prev, className }));
-  }
+  const selectedClass = CLASSES[game.className];
 
   return (
     <section className="grid two">
       <div className="panel">
         <h2>Erou</h2>
         <div className="hero-profile">
-          <div className="big-emoji">{CLASSES[game.className].emoji}</div>
+          <div className="big-emoji">{selectedClass.emoji}</div>
           <div>
             <h3>{game.playerName}</h3>
             <p>Level {game.level} · {game.className}</p>
@@ -1191,19 +1270,21 @@ function Hero({ game, setGame }) {
         </div>
       </div>
 
-      <div className="panel">
-        <h2>Schimbă clasa</h2>
-        <p>Pentru MVP poți schimba clasa ca să testăm balansul.</p>
-        <div className="class-list">
-          {Object.entries(CLASSES).map(([key, item]) => (
-            <button key={key} className={game.className === key ? "class-card active" : "class-card"} onClick={() => changeClass(key)}>
-              <span className="class-emoji">{item.emoji}</span>
-              <span>
-                <b>{item.title}</b>
-                <small>{item.skill.name}</small>
-              </span>
-            </button>
-          ))}
+      <div className="panel locked-class-panel">
+        <h2>Clasă blocată</h2>
+        <p>Clasa se alege la crearea eroului și rămâne permanentă pentru acest cont.</p>
+
+        <div className="locked-class-card">
+          <span className="class-emoji">{selectedClass.emoji}</span>
+          <div>
+            <b>{selectedClass.title}</b>
+            <small>{selectedClass.description}</small>
+            <small>Skill: {selectedClass.skill.name}</small>
+          </div>
+        </div>
+
+        <div className="notice locked">
+          🔒 Pentru altă clasă trebuie creat un erou nou / cont nou.
         </div>
       </div>
     </section>
@@ -1349,7 +1430,7 @@ function Game({ session }) {
       {tab === "battle" && <Battle game={game} setGame={setGame} />}
       {tab === "world" && <Dungeon game={game} setGame={setGame} />}
       {tab === "inventory" && <Inventory game={game} setGame={setGame} />}
-      {tab === "hero" && <Hero game={game} setGame={setGame} />}
+      {tab === "hero" && <Hero game={game} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>
   );

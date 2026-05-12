@@ -1,43 +1,30 @@
-# S-Fleet Fantasy War ⚔️ — Update 3
+# S-Fleet Fantasy War ⚔️ — Update 4
 
-Update 3 adaugă **World Map / Dungeon System**.
+Update 4 adaugă cerințele cerute peste Update 3:
 
-## Ce este nou
-
-- tab nou **World**
-- zone diferite:
-  - Goblin Forest
-  - Dark Wolves Valley
-  - Skeleton Crypt
-  - Infernal Gate
-- fiecare zonă are:
-  - level minim
-  - cost de energie
-  - monștri proprii
-  - boss propriu
-  - drop chance diferit
-  - rarity boost pentru iteme
-- boss fight pentru fiecare zonă
-- progres salvat pentru boss defeated și clears pe zonă
-- questuri noi:
-  - Dungeon Runner
-  - Boss Slayer
+- readuce **Wins** sus lângă **Power**
+- butonul **Colectează resurse** funcționează o singură dată pe oră
+- colectarea strânge producția pe ore întregi trecute, până la maximum 24h
+- la colectare energia se umple la maximul suportat de caracter
+- energia se afișează ca `curent/maxim`
+- clasa eroului este blocată după creare
+- tabul Erou nu mai permite schimbarea clasei
 - compatibil cu salvările existente
 
-## Important Supabase
+## Nu trebuie modificat Supabase
 
-Nu trebuie să schimbi tabela Supabase. Salvarea este în câmpul JSONB `data`, deci World Map, Dungeon, boss kills și clears se adaugă automat în salvarea existentă.
+Tabela rămâne aceeași. Datele noi se salvează în același câmp JSONB `data`.
 
-## Cum faci update pe GitHub
+## Cum îl urci
 
-1. Descarcă ZIP-ul Update 3.
+1. Descarcă ZIP-ul.
 2. Dezarhivează-l.
-3. Intră în repository-ul tău GitHub `s-fleet-fantasy-war`.
-4. Înlocuiește fișierele vechi cu cele noi.
+3. Intră în repository-ul GitHub `s-fleet-fantasy-war`.
+4. Upload/înlocuiește toate fișierele din ZIP.
 5. Apasă **Commit changes**.
-6. Netlify pornește automat deploy.
+6. Netlify pornește deploy automat.
 
-## Dacă Netlify nu pornește automat
+Dacă deploy-ul nu pornește:
 
 ```txt
 Netlify
@@ -47,7 +34,7 @@ Netlify
 → Deploy site
 ```
 
-## Build settings Netlify
+## Build settings
 
 ```txt
 Build command: npm run build
@@ -63,4 +50,4 @@ VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
 ```
 
-Nu pune parola bazei de date, nu pune service_role, nu pune secret key.
+Nu pune parola bazei de date, `service_role` sau `secret key`.
