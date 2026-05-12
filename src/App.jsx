@@ -9,7 +9,7 @@ const MAX_CITADEL_LEVEL = 50;
 const MAX_HERO_LEVEL = 100;
 const MAX_PARAGON_LEVEL = 250;
 
-const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v9";
+const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v10";
 
 const CLASSES = {
   Knight: {
@@ -65,6 +65,18 @@ const BUILDINGS = {
     name: "Arcane Academy",
     description: "Crește mana și puterea magică.",
     baseCost: { gold: 110, wood: 65, crystals: 12 }
+  },
+  wall: {
+    emoji: "🧱",
+    name: "Protection Wall",
+    description: "Zidul de protecție apără orașul când alți jucători trimit atacuri.",
+    baseCost: { gold: 180, wood: 220, crystals: 18 }
+  },
+  watchtower: {
+    emoji: "🗼",
+    name: "Observation Tower",
+    description: "Turnul de observație arată atacurile care ajung spre orașul tău.",
+    baseCost: { gold: 150, wood: 130, crystals: 22 }
   }
 };
 
@@ -256,7 +268,7 @@ const QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 9,
+    version: 10,
     playerName,
     className,
     level: 1,
@@ -265,19 +277,22 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
     xpToNext: 100,
     resources: { gold: 350, wood: 220, crystals: 45, diamonds: 20, sCoins: 0, energy: 10 },
     city: { lastResourceCollectionAt: null },
+    guild: { id: null, name: null, tag: null, role: null },
     classLocked: true,
     buildings: {
       citadel: { level: 1 },
       barracks: { level: 1 },
       mine: { level: 1 },
       lumber: { level: 1 },
-      academy: { level: 1 }
+      academy: { level: 1 },
+      wall: { level: 1 },
+      watchtower: { level: 1 }
     },
     inventory: [],
     equipment: { weapon: null, armor: null, ring: null, amulet: null },
     mounts: { owned: ["brown_horse"], active: "brown_horse" },
     paladin: { level: 1, xp: 0, xpToNext: 100, mode: "city" },
-    stats: { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, pvpWins: 0, pvpLosses: 0 },
+    stats: { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, pvpWins: 0, pvpLosses: 0, cityAttackWins: 0, cityAttackLosses: 0, cityDefenseWins: 0, cityDefenseLosses: 0 },
     completedQuests: [],
     world: { selectedZoneId: "goblin_forest", completedBosses: [], clears: {} },
     createdAt: new Date().toISOString()
@@ -291,7 +306,7 @@ function clone(value) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 9;
+  next.version = 10;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -302,6 +317,7 @@ function normalizeGame(game) {
   next.resources.sCoins = Math.max(0, Math.floor(Number(next.resources.sCoins) || 0));
   next.resources.energy = Math.max(0, Math.floor(Number(next.resources.energy) || 10));
   next.city = { lastResourceCollectionAt: null, ...(next.city || {}) };
+  next.guild = { id: null, name: null, tag: null, role: null, ...(next.guild || {}) };
   next.level = Math.max(1, Math.min(MAX_HERO_LEVEL, Math.floor(Number(next.level) || 1)));
   next.paragonLevel = Math.max(0, Math.min(MAX_PARAGON_LEVEL, Math.floor(Number(next.paragonLevel) || 0)));
   if (next.level < MAX_HERO_LEVEL) next.paragonLevel = 0;
@@ -345,7 +361,7 @@ function normalizeGame(game) {
   next.paladin.xpToNext = Math.max(80, Math.floor(Number(next.paladin.xpToNext) || 100));
   next.paladin.mode = next.paladin.mode === "battle" ? "battle" : "city";
 
-  next.stats = { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, pvpWins: 0, pvpLosses: 0, ...(next.stats || {}) };
+  next.stats = { wins: 0, losses: 0, itemsFound: 0, dungeonWins: 0, bossKills: 0, pvpWins: 0, pvpLosses: 0, cityAttackWins: 0, cityAttackLosses: 0, cityDefenseWins: 0, cityDefenseLosses: 0, ...(next.stats || {}) };
   Object.keys(next.stats).forEach((key) => { next.stats[key] = Math.max(0, Math.floor(Number(next.stats[key]) || 0)); });
   next.completedQuests = Array.isArray(next.completedQuests) ? next.completedQuests : [];
   next.world = { selectedZoneId: "goblin_forest", completedBosses: [], clears: {}, ...(next.world || {}) };
@@ -514,11 +530,36 @@ function getHeroStats(game) {
     b.academy.level * 25 +
     b.mine.level * 15 +
     b.lumber.level * 15 +
+    (b.wall?.level || 0) * 45 +
+    (b.watchtower?.level || 0) * 30 +
     gear.power +
     mount.power +
     paladin.power;
 
   return { hp, attack, defense, mana, power, gear, mount, paladin };
+}
+
+function getCityDefensePower(game) {
+  const safe = normalizeGame(game);
+  const stats = getHeroStats(safe);
+  const wallLevel = safe.buildings.wall?.level || 1;
+  const towerLevel = safe.buildings.watchtower?.level || 1;
+  const citadelLevel = safe.buildings.citadel?.level || 1;
+  const paladinCity = getPaladinCityBonus(safe);
+  return Math.round(
+    stats.power * 0.42 +
+    citadelLevel * 135 +
+    wallLevel * 520 +
+    towerLevel * 95 +
+    (paladinCity.defensePower || 0)
+  );
+}
+
+function getCityAttackPower(game) {
+  const safe = normalizeGame(game);
+  const stats = getHeroStats(safe);
+  const paladinBattle = getPaladinBattleBonus(safe);
+  return Math.round(stats.power * 0.62 + paladinBattle.power * 0.35 + getProgressionLevel(safe) * 35);
 }
 
 function createPublicProfile(game) {
@@ -545,6 +586,14 @@ function createPublicProfile(game) {
     items: totalItemCount(safe),
     mount: safe.mounts?.active || "brown_horse",
     paladinMode: safe.paladin?.mode || "city",
+    guildId: safe.guild?.id || null,
+    guildName: safe.guild?.name || null,
+    guildTag: safe.guild?.tag || null,
+    cityDefensePower: getCityDefensePower(safe),
+    cityAttackPower: getCityAttackPower(safe),
+    citadelLevel: safe.buildings.citadel?.level || 1,
+    wallLevel: safe.buildings.wall?.level || 1,
+    watchtowerLevel: safe.buildings.watchtower?.level || 1,
     updatedAt: new Date().toISOString()
   };
 }
@@ -786,6 +835,7 @@ function costText(cost) {
 
 function getBuildingMaxLevel(game, key) {
   if (key === "citadel") return MAX_CITADEL_LEVEL;
+  if (key === "wall") return Math.min(10, Math.max(1, game.buildings.citadel.level));
   return Math.max(1, game.buildings.citadel.level);
 }
 
@@ -1066,7 +1116,9 @@ function CityVisualMap({ game, onUpgrade }) {
     { key: "barracks", x: 25, y: 62 },
     { key: "mine", x: 75, y: 65 },
     { key: "lumber", x: 18, y: 28 },
-    { key: "academy", x: 78, y: 27 }
+    { key: "academy", x: 78, y: 27 },
+    { key: "wall", x: 50, y: 75 },
+    { key: "watchtower", x: 35, y: 18 }
   ];
 
   return (
@@ -1104,7 +1156,7 @@ function CityVisualMap({ game, onUpgrade }) {
   );
 }
 
-function City({ game, setGame }) {
+function City({ game, setGame, session }) {
   const [now, setNow] = useState(Date.now());
   const normalizedGame = applyCompletedConstructions(game, now).game;
   const collectionState = getCollectionState(normalizedGame, now);
@@ -1155,6 +1207,8 @@ function City({ game, setGame }) {
         <div><b>Energie la colectare</b><span>se umple la maxim: {maxEnergy}</span></div>
         <div><b>Protecție Paladin</b><span>{getPaladinCityBonus(normalizedGame).defensePower} city power</span></div>
       </div>
+
+      <CityDefensePanel game={normalizedGame} session={session} />
 
       <CityVisualMap game={normalizedGame} onUpgrade={upgrade} />
 
@@ -2273,6 +2327,7 @@ function Arena({ game, setGame, session }) {
   const [status, setStatus] = useState("Se încarcă leaderboard-ul...");
   const [selectedId, setSelectedId] = useState("");
   const [battleLog, setBattleLog] = useState([]);
+  const [cityAttackStatus, setCityAttackStatus] = useState("");
 
   async function loadPlayers() {
     setStatus("Se încarcă leaderboard-ul...");
@@ -2293,6 +2348,22 @@ function Arena({ game, setGame, session }) {
 
   const opponents = players.filter((player) => player.userId !== session?.user?.id);
   const selectedOpponent = opponents.find((player) => player.userId === selectedId) || opponents[0];
+
+  async function launchCityAttack() {
+    if (!selectedOpponent || !session || !supabase) {
+      setCityAttackStatus("Alege un jucător și intră cu contul Supabase.");
+      return;
+    }
+    setCityAttackStatus("Trimit atacul spre oraș...");
+    const { data, error } = await supabase.rpc("launch_city_attack", { target_user_id: selectedOpponent.userId });
+    if (error) {
+      setCityAttackStatus(`Eroare atac oraș: ${error.message}. Rulează SQL-ul din Update 9.`);
+      return;
+    }
+    const attack = Array.isArray(data) ? data[0] : data;
+    const landsAt = attack?.lands_at ? new Date(attack.lands_at).toLocaleTimeString("ro-RO") : "în 10 minute";
+    setCityAttackStatus(`Atacul spre ${selectedOpponent.playerName} a fost trimis. Ajunge la ${landsAt}.`);
+  }
 
   function startPvp() {
     if (!selectedOpponent) {
@@ -2377,11 +2448,328 @@ function Arena({ game, setGame, session }) {
           )}
 
           <button className="primary big" onClick={startPvp} disabled={!selectedOpponent}>Start PvP</button>
+          <button className="primary big city-attack-button" onClick={launchCityAttack} disabled={!selectedOpponent}>Trimite atac spre oraș · 10 min</button>
+          {cityAttackStatus && <div className="notice">{cityAttackStatus}</div>}
         </div>
 
         <div className="battle-log pvp-log">
           {battleLog.length === 0 ? <div>Nu ai pornit încă o luptă PvP.</div> : battleLog.map((line, index) => <div key={`${line}-${index}`}>{line}</div>)}
         </div>
+      </div>
+    </section>
+  );
+}
+
+
+function CityDefensePanel({ game, session }) {
+  const [attacks, setAttacks] = useState([]);
+  const [status, setStatus] = useState(hasSupabase ? "Se verifică atacurile..." : "Atacurile pe orașe au nevoie de Supabase.");
+  const [now, setNow] = useState(Date.now());
+
+  async function loadAttacks() {
+    if (!hasSupabase || !session) {
+      setStatus("Intră cu un cont ca să vezi atacurile incoming.");
+      return;
+    }
+
+    await supabase.rpc("resolve_due_city_attacks");
+    const { data, error } = await supabase.rpc("get_city_attacks_for_player");
+    if (error) {
+      setStatus(`Atacurile pe orașe nu sunt active: ${error.message}. Rulează SQL-ul din Update 9.`);
+      setAttacks([]);
+      return;
+    }
+    setAttacks(data || []);
+    setStatus((data || []).length ? "City defense actualizat." : "Nu ai atacuri active sau recente.");
+  }
+
+  useEffect(() => {
+    loadAttacks();
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+      loadAttacks();
+    }, 20000);
+    return () => window.clearInterval(timer);
+  }, [session?.user?.id]);
+
+  const incoming = attacks.filter((attack) => attack.defender_id === session?.user?.id && attack.status === "pending");
+  const outgoing = attacks.filter((attack) => attack.attacker_id === session?.user?.id && attack.status === "pending");
+  const recent = attacks.filter((attack) => attack.status === "resolved").slice(0, 4);
+  const towerLevel = game.buildings.watchtower?.level || 1;
+  const wallLevel = game.buildings.wall?.level || 1;
+
+  return (
+    <div className="city-defense-panel">
+      <div className="defense-card strong">
+        <b>🧱 City Defense</b>
+        <span>{getCityDefensePower(game)} power · Wall Lv. {wallLevel}</span>
+      </div>
+      <div className="defense-card">
+        <b>🗼 Observation Tower</b>
+        <span>Lv. {towerLevel} · vede atacurile incoming</span>
+      </div>
+      <div className="defense-card">
+        <b>📡 Incoming</b>
+        <span>{incoming.length} atacuri spre oraș</span>
+      </div>
+      <div className="defense-card">
+        <b>⚔️ Outgoing</b>
+        <span>{outgoing.length} atacuri trimise</span>
+      </div>
+
+      {(incoming.length > 0 || outgoing.length > 0 || recent.length > 0) && (
+        <div className="city-attack-list">
+          {incoming.map((attack) => (
+            <div className="city-attack-row incoming" key={attack.id}>
+              <b>Incoming de la {attack.attacker_name}</b>
+              <span>Ajunge în {formatCountdown(new Date(attack.lands_at).getTime() - now)} · ATK {attack.attack_power}</span>
+            </div>
+          ))}
+          {outgoing.map((attack) => (
+            <div className="city-attack-row outgoing" key={attack.id}>
+              <b>Atacul tău spre {attack.defender_name}</b>
+              <span>Ajunge în {formatCountdown(new Date(attack.lands_at).getTime() - now)} · ATK {attack.attack_power}</span>
+            </div>
+          ))}
+          {recent.map((attack) => {
+            const result = attack.result || {};
+            const youAreAttacker = attack.attacker_id === session?.user?.id;
+            const win = Boolean(result.attackerWin) === youAreAttacker;
+            return (
+              <div className="city-attack-row resolved" key={attack.id}>
+                <b>{win ? "Victorie" : "Înfrângere"} · {attack.attacker_name} vs {attack.defender_name}</b>
+                <span>ATK {result.attackPower || attack.attack_power} · DEF {result.defensePower || attack.defense_power_at_launch}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="notice compact">{status}</div>
+    </div>
+  );
+}
+
+function GuildPanel({ game, setGame, session }) {
+  const [guilds, setGuilds] = useState([]);
+  const [name, setName] = useState("");
+  const [tag, setTag] = useState("");
+  const [status, setStatus] = useState("Se încarcă guild-urile...");
+
+  async function loadGuilds() {
+    if (!hasSupabase || !session) {
+      setStatus("Guild are nevoie de login Supabase.");
+      return;
+    }
+    const { data, error } = await supabase.rpc("get_guilds", { limit_count: 50 });
+    if (error) {
+      setStatus(`Guild indisponibil: ${error.message}. Rulează SQL-ul din Update 9.`);
+      setGuilds([]);
+      return;
+    }
+    setGuilds(data || []);
+    setStatus((data || []).length ? "Guild list actualizat." : "Nu există încă guild-uri. Creează prima alianță.");
+  }
+
+  useEffect(() => { loadGuilds(); }, [session?.user?.id]);
+
+  async function createGuild() {
+    if (!name.trim() || !tag.trim()) {
+      setStatus("Completează numele și tag-ul guild-ului.");
+      return;
+    }
+    const { data, error } = await supabase.rpc("create_guild", { guild_name: name.trim(), guild_tag: tag.trim().toUpperCase().slice(0, 5) });
+    if (error) {
+      setStatus(`Nu pot crea guild: ${error.message}`);
+      return;
+    }
+    const guild = Array.isArray(data) ? data[0] : data;
+    setGame((prev) => ({ ...normalizeGame(prev), guild: { id: guild.id, name: guild.name, tag: guild.tag, role: "leader" } }));
+    setStatus(`Guild creat: [${guild.tag}] ${guild.name}`);
+    setName("");
+    setTag("");
+    loadGuilds();
+  }
+
+  async function joinGuild(guild) {
+    const { error } = await supabase.rpc("join_guild", { target_guild_id: guild.id });
+    if (error) {
+      setStatus(`Nu poți intra în guild: ${error.message}`);
+      return;
+    }
+    setGame((prev) => ({ ...normalizeGame(prev), guild: { id: guild.id, name: guild.name, tag: guild.tag, role: "member" } }));
+    setStatus(`Ai intrat în [${guild.tag}] ${guild.name}`);
+    loadGuilds();
+  }
+
+  async function leaveGuild() {
+    const { error } = await supabase.rpc("leave_guild");
+    if (error) {
+      setStatus(`Nu poți ieși din guild: ${error.message}`);
+      return;
+    }
+    setGame((prev) => ({ ...normalizeGame(prev), guild: { id: null, name: null, tag: null, role: null } }));
+    setStatus("Ai ieșit din guild.");
+    loadGuilds();
+  }
+
+  return (
+    <section className="grid two guild-layout">
+      <div className="panel">
+        <h2>Guild / Alianță</h2>
+        {game.guild?.id ? (
+          <div className="guild-current">
+            <div className="big-emoji">🛡️</div>
+            <h3>[{game.guild.tag}] {game.guild.name}</h3>
+            <p>Rol: {game.guild.role || "member"}</p>
+            <button className="danger" onClick={leaveGuild}>Ieși din guild</button>
+          </div>
+        ) : (
+          <>
+            <p>Nu ești într-o alianță. Creează una sau intră într-un guild existent.</p>
+            <label>Nume guild</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="S-Fleet Alliance" />
+            <label>Tag</label>
+            <input value={tag} onChange={(e) => setTag(e.target.value.toUpperCase().slice(0, 5))} placeholder="SFLT" />
+            <button className="primary big" onClick={createGuild}>Creează guild</button>
+          </>
+        )}
+        <div className="notice">{status}</div>
+      </div>
+
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Guild List</h2>
+            <p>Alianțele sunt comune pentru toți jucătorii.</p>
+          </div>
+          <button onClick={loadGuilds}>Refresh</button>
+        </div>
+        <div className="guild-list">
+          {guilds.map((guild) => (
+            <div className="guild-row" key={guild.id}>
+              <div>
+                <b>[{guild.tag}] {guild.name}</b>
+                <span>{guild.members_count || 0} membri · Power {guild.total_power || 0}</span>
+              </div>
+              <button disabled={Boolean(game.guild?.id)} onClick={() => joinGuild(guild)}>Join</button>
+            </div>
+          ))}
+          {guilds.length === 0 && <div className="empty-inventory">Nu există guild-uri încă.</div>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AdminPanel({ session }) {
+  const [players, setPlayers] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [jsonText, setJsonText] = useState("");
+  const [status, setStatus] = useState("Admin Panel se încarcă...");
+
+  async function loadPlayers() {
+    if (!hasSupabase || !session) {
+      setStatus("Admin Panel are nevoie de login Supabase.");
+      return;
+    }
+    const adminCheck = await supabase.rpc("is_current_user_admin");
+    if (!adminCheck.data) {
+      setStatus("Contul tău nu este admin. Adaugă emailul în tabela admin_users din Supabase.");
+      return;
+    }
+    const { data, error } = await supabase.rpc("admin_list_players");
+    if (error) {
+      setStatus(`Admin Panel indisponibil: ${error.message}. Rulează SQL-ul din Update 9.`);
+      return;
+    }
+    const list = data || [];
+    setPlayers(list);
+    const first = list[0];
+    if (first && !selectedId) {
+      setSelectedId(first.user_id);
+      setJsonText(JSON.stringify(first.data || {}, null, 2));
+    }
+    setStatus(`Admin activ pentru ${session.user.email}. Jucători încărcați: ${list.length}`);
+  }
+
+  useEffect(() => { loadPlayers(); }, [session?.user?.id]);
+
+  const selected = players.find((player) => player.user_id === selectedId);
+
+  function choosePlayer(id) {
+    const player = players.find((p) => p.user_id === id);
+    setSelectedId(id);
+    setJsonText(JSON.stringify(player?.data || {}, null, 2));
+  }
+
+  async function savePlayer() {
+    try {
+      const parsed = normalizeGame(JSON.parse(jsonText));
+      const { error } = await supabase.rpc("admin_update_player_data", { target_user_id: selectedId, new_data: parsed });
+      if (error) {
+        setStatus(`Eroare salvare admin: ${error.message}`);
+        return;
+      }
+      setStatus("Jucător actualizat. Refresh pentru date noi.");
+      loadPlayers();
+    } catch (error) {
+      setStatus(`JSON invalid: ${error.message}`);
+    }
+  }
+
+  function grant(resource, amount) {
+    try {
+      const parsed = normalizeGame(JSON.parse(jsonText));
+      parsed.resources[resource] = Math.max(0, Number(parsed.resources[resource] || 0) + amount);
+      setJsonText(JSON.stringify(parsed, null, 2));
+      setStatus(`Am adăugat ${amount} ${resource}. Apasă Salvează ca să aplici.`);
+    } catch (error) {
+      setStatus(`Nu pot modifica: ${error.message}`);
+    }
+  }
+
+  return (
+    <section className="grid two admin-layout">
+      <div className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Admin Panel</h2>
+            <p>Funcționează doar pentru emailurile adăugate în Supabase `admin_users`.</p>
+          </div>
+          <button onClick={loadPlayers}>Refresh</button>
+        </div>
+
+        <label>Alege jucător</label>
+        <select value={selectedId} onChange={(e) => choosePlayer(e.target.value)}>
+          {players.map((player) => (
+            <option value={player.user_id} key={player.user_id}>{player.email || "no-email"} · {player.player_name}</option>
+          ))}
+        </select>
+
+        {selected && (
+          <div className="admin-summary">
+            <b>{selected.player_name}</b>
+            <span>{selected.email} · {selected.class_name}</span>
+          </div>
+        )}
+
+        <div className="admin-grants">
+          <button onClick={() => grant("gold", 10000)}>+10k Gold</button>
+          <button onClick={() => grant("wood", 10000)}>+10k Wood</button>
+          <button onClick={() => grant("crystals", 1000)}>+1k Crystals</button>
+          <button onClick={() => grant("diamonds", 250)}>+250 Diamonds</button>
+          <button onClick={() => grant("sCoins", 100)}>+100 S-Coins</button>
+        </div>
+
+        <div className="notice">{status}</div>
+      </div>
+
+      <div className="panel">
+        <h2>Modify Anything</h2>
+        <p>Editează JSON-ul salvării. Poți schimba level, resurse, buildings, inventory, paladin, guild etc.</p>
+        <textarea className="admin-json" value={jsonText} onChange={(e) => setJsonText(e.target.value)} spellCheck="false" />
+        <button className="primary big" disabled={!selectedId} onClick={savePlayer}>Salvează modificările</button>
       </div>
     </section>
   );
@@ -2422,6 +2810,19 @@ function Game({ session }) {
   const [tab, setTab] = useState("city");
   const [saveStatus, setSaveStatus] = useState("...");
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    async function checkAdmin() {
+      if (!hasSupabase || !session) {
+        setIsAdmin(false);
+        return;
+      }
+      const { data } = await supabase.rpc("is_current_user_admin");
+      setIsAdmin(Boolean(data));
+    }
+    checkAdmin();
+  }, [session]);
 
   useEffect(() => {
     async function loadGame() {
@@ -2536,11 +2937,13 @@ function Game({ session }) {
         <button className={tab === "hero" ? "active" : ""} onClick={() => setTab("hero")}>🧙 Erou</button>
         <button className={tab === "companions" ? "active" : ""} onClick={() => setTab("companions")}>🐴 Companions</button>
         <button className={tab === "arena" ? "active" : ""} onClick={() => setTab("arena")}>🏆 Arena</button>
+        <button className={tab === "guild" ? "active" : ""} onClick={() => setTab("guild")}>🛡️ Guild</button>
+        {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Questuri</button>
         <button className="danger-tab" onClick={resetSave}>Reset progres</button>
       </nav>
 
-      {tab === "city" && <City game={game} setGame={setGame} />}
+      {tab === "city" && <City game={game} setGame={setGame} session={session} />}
       {tab === "battle" && <Battle game={game} setGame={setGame} />}
       {tab === "world" && <Dungeon game={game} setGame={setGame} />}
       {tab === "inventory" && <Inventory game={game} setGame={setGame} />}
@@ -2549,6 +2952,8 @@ function Game({ session }) {
       {tab === "hero" && <Hero game={game} />}
       {tab === "companions" && <Companions game={game} setGame={setGame} />}
       {tab === "arena" && <Arena game={game} setGame={setGame} session={session} />}
+      {tab === "guild" && <GuildPanel game={game} setGame={setGame} session={session} />}
+      {tab === "admin" && isAdmin && <AdminPanel session={session} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>
   );

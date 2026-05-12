@@ -1866,3 +1866,170 @@ select:focus {
     width: 130px;
   }
 }
+
+/* Update 9: Guild, Admin, City Attacks */
+.city-defense-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.defense-card {
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 20px;
+  padding: 14px;
+  background: rgba(255,255,255,.055);
+}
+
+.defense-card.strong {
+  border-color: rgba(251, 191, 36, .34);
+  background: rgba(251, 191, 36, .10);
+}
+
+.defense-card b,
+.guild-row b,
+.admin-summary b {
+  display: block;
+  color: #fff;
+  margin-bottom: 5px;
+}
+
+.defense-card span,
+.guild-row span,
+.admin-summary span {
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.city-attack-list {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+}
+
+.city-attack-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.055);
+  padding: 12px 14px;
+}
+
+.city-attack-row.incoming {
+  border-color: rgba(248, 113, 113, .32);
+  background: rgba(239, 68, 68, .09);
+}
+
+.city-attack-row.outgoing {
+  border-color: rgba(96, 165, 250, .30);
+  background: rgba(59, 130, 246, .09);
+}
+
+.city-attack-row.resolved {
+  border-color: rgba(52, 211, 153, .28);
+  background: rgba(16, 185, 129, .08);
+}
+
+.notice.compact {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+.city-attack-button {
+  margin-top: 10px;
+  background: linear-gradient(135deg, #a78bfa, #ef4444) !important;
+  color: #fff !important;
+}
+
+.guild-current {
+  text-align: center;
+}
+
+.guild-current .danger {
+  margin-top: 12px;
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: 18px;
+  font-weight: 950;
+}
+
+.guild-list {
+  display: grid;
+  gap: 12px;
+}
+
+.guild-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 20px;
+  background: rgba(255,255,255,.055);
+  padding: 14px;
+}
+
+.guild-row button,
+.admin-grants button {
+  border: 0;
+  border-radius: 16px;
+  padding: 10px 12px;
+  font-weight: 950;
+  color: #0f172a;
+  background: linear-gradient(135deg, #fcd34d, #f97316);
+}
+
+.admin-summary {
+  margin-top: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 18px;
+  background: rgba(255,255,255,.055);
+  padding: 12px;
+}
+
+.admin-grants {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-json {
+  width: 100%;
+  min-height: 620px;
+  resize: vertical;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 22px;
+  background: rgba(2, 6, 23, .75);
+  color: #e2e8f0;
+  padding: 14px;
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  outline: none;
+}
+
+.admin-json:focus {
+  border-color: rgba(251, 191, 36, .65);
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, .10);
+}
+
+@media (max-width: 1050px) {
+  .city-defense-panel,
+  .city-attack-row,
+  .guild-row,
+  .admin-grants {
+    grid-template-columns: 1fr;
+  }
+
+  .city-defense-panel {
+    display: grid;
+  }
+
+  .city-attack-row,
+  .guild-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

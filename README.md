@@ -1,28 +1,18 @@
-# S-Fleet Fantasy War ⚔️ — Update 8
+# S-Fleet Fantasy War ⚔️ — Update 9
 
-Update 8 adaugă:
+Update 9 adaugă:
 
-- Timer la construcții
-- Finalizare construcții cu S-Coins
-- Shop cu gold / diamonds / S-Coins
-- Schimbare clasă cu S-Coins
-- Energie instant cu S-Coins
-- Pachete resurse și chest-uri în shop
-- Paladin training limitat la nivelul eroului / Paragon
-- Trade Center / Marketplace între jucători
-- Vânzare iteme către marketplace
-- Cumpărare iteme de la alți jucători cu gold/diamonds
-- Colectare câștiguri din marketplace
+- **Guild / Alianță**
+- **Admin Panel** pe email
+- **Protection Wall** la Citadel, crescut separat până la nivel 10
+- **Observation Tower** pentru atacuri incoming
+- **Atacuri pe orașele jucătorilor** cu timp de drum de 10 minute
+- buton în Arena: **Trimite atac spre oraș · 10 min**
+- City Defense panel în tabul Oraș
 
-## Important Supabase
+## Important: SQL obligatoriu
 
-Pentru Trade Center / Marketplace trebuie rulat scriptul nou:
-
-```txt
-supabase/schema.sql
-```
-
-Pași:
+Pentru Update 9 trebuie rulat `supabase/schema.sql` în Supabase:
 
 ```txt
 Supabase
@@ -32,34 +22,63 @@ Supabase
 → Run
 ```
 
-Scriptul păstrează salvările existente și adaugă tabela:
+## Activare Admin Panel pe email
 
-```txt
-marketplace_listings
+După ce rulezi SQL-ul, adaugă emailul contului care trebuie să fie admin.
+
+În Supabase > SQL Editor rulezi:
+
+```sql
+insert into public.admin_users(email)
+values ('EMAILUL_TAU_AICI')
+on conflict (email) do nothing;
 ```
 
-## S-Coins
+Exemplu:
 
-S-Coins sunt moneda premium. În această versiune se adaugă manual de creator în Supabase, în salvarea jucătorului:
-
-```txt
-game_saves → data → resources → sCoins
+```sql
+insert into public.admin_users(email)
+values ('admin@example.com')
+on conflict (email) do nothing;
 ```
 
-Utilizări S-Coins:
+Apoi intri în joc cu acel cont, iar tabul **🧰 Admin** apare automat.
 
-- schimbare clasă
-- energie instant
-- finalizare construcții
-- premium chest
-- redenumire erou
+## Admin poate modifica
+
+Admin Panel permite editarea salvării JSON pentru orice jucător:
+
+- resurse
+- level / paragon
+- clădiri
+- inventory
+- echipamente
+- mount-uri
+- Paladin
+- guild info
+- orice alt câmp din salvare
+
+## City Attacks
+
+Atacurile spre orașe funcționează așa:
+
+1. Intri în **Arena**.
+2. Alegi un jucător.
+3. Apeși **Trimite atac spre oraș · 10 min**.
+4. Atacul apare la tine ca outgoing.
+5. La defender apare ca incoming în Oraș, prin **Observation Tower**.
+6. După 10 minute se rezolvă automat când unul dintre jucători intră/refresh în joc.
+
+## Clădiri noi
+
+- **Protection Wall**: max level 10, crește City Defense.
+- **Observation Tower**: arată atacurile incoming.
 
 ## Deploy
 
-În GitHub înlocuiești fișierele vechi cu cele din acest ZIP și apeși Commit changes.
-Netlify face deploy automat.
+Înlocuiești fișierele din GitHub cu cele din ZIP, apoi Netlify face deploy automat.
 
-Build settings:
+Build settings rămân:
 
 ```txt
 Build command: npm run build
