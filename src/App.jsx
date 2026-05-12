@@ -5,8 +5,9 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const hasSupabase = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const MAX_CITADEL_LEVEL = 50;
 
-const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v5";
+const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v6";
 
 const CLASSES = {
   Knight: {
@@ -50,6 +51,12 @@ const BUILDINGS = {
     name: "Gold Mine",
     description: "Produce aur și ajută economia regatului.",
     baseCost: { gold: 75, wood: 45, crystals: 5 }
+  },
+  lumber: {
+    emoji: "🪓",
+    name: "Wood Collector",
+    description: "Strânge lemn pentru construcții. Funcționează ca Gold Mine, dar pentru wood.",
+    baseCost: { gold: 85, wood: 35, crystals: 6 }
   },
   academy: {
     emoji: "🔮",
@@ -202,7 +209,7 @@ const QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 5,
+    version: 6,
     playerName,
     className,
     level: 1,
@@ -215,6 +222,7 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
       citadel: { level: 1 },
       barracks: { level: 1 },
       mine: { level: 1 },
+      lumber: { level: 1 },
       academy: { level: 1 }
     },
     inventory: [],
@@ -233,7 +241,7 @@ function clone(value) {
 function normalizeGame(game) {
   if (!game) return null;
   const next = clone(game);
-  next.version = 5;
+  next.version = 6;
   next.resources = { gold: 0, wood: 0, crystals: 0, energy: 0, ...(next.resources || {}) };
   next.city = { lastResourceCollectionAt: null, ...(next.city || {}) };
   next.classLocked = true;
@@ -354,6 +362,7 @@ function getHeroStats(game) {
     b.barracks.level * 35 +
     b.academy.level * 25 +
     b.mine.level * 15 +
+    b.lumber.level * 15 +
     gear.power;
 
   return { hp, attack, defense, mana, power, gear };
@@ -366,7 +375,7 @@ function getMaxEnergy(game) {
 function getHourlyIncome(game) {
   return {
     gold: 80 + game.buildings.mine.level * 35,
-    wood: 45 + game.buildings.citadel.level * 18,
+    wood: 45 + game.buildings.lumber.level * 35 + game.buildings.citadel.level * 8,
     crystals: 5 + game.buildings.academy.level * 3
   };
 }
@@ -451,6 +460,28 @@ function getBuildingCost(game, key) {
 
 function canAfford(resources, cost) {
   return resources.gold >= cost.gold && resources.wood >= cost.wood && resources.crystals >= cost.crystals;
+}
+
+function getBuildingMaxLevel(game, key) {
+  if (key === "citadel") return MAX_CITADEL_LEVEL;
+  return Math.max(1, game.buildings.citadel.level);
+}
+
+function getBuildingUpgradeStatus(game, key) {
+  const level = game.buildings[key].level;
+  const maxLevel = getBuildingMaxLevel(game, key);
+
+  if (level >= maxLevel) {
+    const reason = key === "citadel" ? `Max Lv. ${MAX_CITADEL_LEVEL}` : `Cere Citadel Lv. ${level + 1}`;
+    return { can: false, reason, maxLevel };
+  }
+
+  const cost = getBuildingCost(game, key);
+  if (!canAfford(game.resources, cost)) {
+    return { can: false, reason: "Resurse insuficiente", maxLevel };
+  }
+
+  return { can: true, reason: "Upgrade", maxLevel };
 }
 
 function scaleEnemy(enemy, level, extraScale = 1) {
@@ -674,8 +705,9 @@ function City({ game, setGame }) {
 
   function upgrade(key) {
     setGame((prev) => {
+      const status = getBuildingUpgradeStatus(prev, key);
+      if (!status.can) return prev;
       const cost = getBuildingCost(prev, key);
-      if (!canAfford(prev.resources, cost)) return prev;
       const next = clone(prev);
       next.resources.gold -= cost.gold;
       next.resources.wood -= cost.wood;
@@ -690,7 +722,7 @@ function City({ game, setGame }) {
       <div className="section-title">
         <div>
           <h2>Orașul tău</h2>
-          <p>Colectarea merge o singură dată pe oră. Dacă trec mai multe ore, strângi până la 24h de producție.</p>
+          <p>Colectarea merge o singură dată pe oră. Citadel poate ajunge la level 50, iar celelalte clădiri pot crește doar până la nivelul Citadel.</p>
         </div>
         <button className="primary" disabled={!collectionState.ready} onClick={collect}>
           {collectionState.ready ? "Colectează resurse" : `Disponibil în ${formatCountdown(collectionState.remainingMs)}`}
@@ -707,14 +739,15 @@ function City({ game, setGame }) {
         {Object.entries(BUILDINGS).map(([key, building]) => {
           const cost = getBuildingCost(game, key);
           const level = game.buildings[key].level;
-          const affordable = canAfford(game.resources, cost);
+          const status = getBuildingUpgradeStatus(game, key);
+          const maxText = key === "citadel" ? `Max Lv. ${MAX_CITADEL_LEVEL}` : `Max permis: Lv. ${status.maxLevel} după Citadel`;
           return (
             <article className="building" key={key}>
               <div className="building-top"><span>{building.emoji}</span><b>Lv. {level}</b></div>
               <h3>{building.name}</h3>
               <p>{building.description}</p>
-              <small>Cost: {cost.gold} gold · {cost.wood} wood · {cost.crystals} crystals</small>
-              <button disabled={!affordable} onClick={() => upgrade(key)}>Upgrade</button>
+              <small>{level >= status.maxLevel ? maxText : `Cost: ${cost.gold} gold · ${cost.wood} wood · ${cost.crystals} crystals`}</small>
+              <button disabled={!status.can} onClick={() => upgrade(key)}>{status.reason}</button>
             </article>
           );
         })}
