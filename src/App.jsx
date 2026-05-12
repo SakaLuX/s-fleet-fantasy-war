@@ -53,6 +53,44 @@ const WORLD_BOSS_CONFIG = {
 };
 
 
+
+const CLASS_EVOLUTIONS = {
+  Knight: {
+    Paladin: { emoji: "🛡️", bonus: { hp: 220, attack: 20, defense: 36, mana: 40, power: 1400 }, text: "Holy defender focused on city defense and survival." },
+    Warlord: { emoji: "⚔️", bonus: { hp: 140, attack: 42, defense: 18, mana: 10, power: 1450 }, text: "Offensive commander with stronger raids and PvP pressure." }
+  },
+  Mage: {
+    Archmage: { emoji: "🌌", bonus: { hp: 80, attack: 55, defense: 8, mana: 120, power: 1500 }, text: "Pure magic damage and larger mana pool." },
+    Necromancer: { emoji: "☠️", bonus: { hp: 150, attack: 38, defense: 16, mana: 80, power: 1450 }, text: "Dark magic with improved sustain and boss damage." }
+  },
+  Archer: {
+    Ranger: { emoji: "🏹", bonus: { hp: 130, attack: 38, defense: 18, mana: 55, power: 1425 }, text: "Balanced hunter with strong PvE control." },
+    Assassin: { emoji: "🗡️", bonus: { hp: 80, attack: 58, defense: 8, mana: 35, power: 1500 }, text: "Critical burst specialist for PvP and raids." }
+  }
+};
+
+const CAMPAIGN_CHAPTERS = [
+  { id: "chapter_1", title: "Chapter I · Goblin Forest", req: 1, reward: { gold: 900, wood: 500, xp: 160 }, text: "Clear the forest and secure the first trade road." },
+  { id: "chapter_2", title: "Chapter II · Wolf Valley", req: 8, reward: { gold: 1800, wood: 900, crystals: 80, xp: 280 }, text: "Hunt the dark wolves threatening the border villages." },
+  { id: "chapter_3", title: "Chapter III · Skeleton Crypt", req: 18, reward: { gold: 3200, crystals: 160, diamonds: 15, xp: 480 }, text: "Enter the crypt and break the undead army." },
+  { id: "chapter_4", title: "Chapter IV · Infernal Gate", req: 35, reward: { gold: 5200, wood: 2800, diamonds: 35, xp: 760 }, text: "Close the infernal gate before it burns the kingdom." },
+  { id: "chapter_5", title: "Chapter V · Dragon Citadel", req: 60, reward: { gold: 9000, crystals: 450, diamonds: 65, sCoins: 3, xp: 1250 }, text: "Challenge the dragon citadel and claim royal glory." }
+];
+
+const SEASON_REWARDS = [
+  { tier: 1, points: 50, reward: { gold: 1000, xp: 100 } },
+  { tier: 2, points: 150, reward: { wood: 1200, crystals: 80 } },
+  { tier: 3, points: 300, reward: { diamonds: 25, xp: 300 } },
+  { tier: 4, points: 600, reward: { gold: 5000, diamonds: 40, sCoins: 1 } },
+  { tier: 5, points: 1000, reward: { diamonds: 80, sCoins: 4 } }
+];
+
+function getEvolutionBonus(game) {
+  const evolution = game?.evolution;
+  const data = CLASS_EVOLUTIONS[game?.className]?.[evolution];
+  return data?.bonus || { hp: 0, attack: 0, defense: 0, mana: 0, power: 0 };
+}
+
 const LOCAL_KEY = "s_fleet_fantasy_war_local_save_v16";
 
 const CLASSES = {
@@ -476,7 +514,7 @@ function unreadMailCount(game) {
   return (game.mail || []).filter((mail) => !mail.read).length;
 }
 
-function isShieldActive(game, now = Date.now()) {
+function isShieldActivee(game, now = Date.now()) {
   const shieldUntil = game.city?.shieldUntil ? new Date(game.city.shieldUntil).getTime() : 0;
   return Boolean(shieldUntil && shieldUntil > now);
 }
@@ -568,6 +606,19 @@ function normalizeGame(game) {
   }
   next.worldBoss.totalDamage = Math.max(0, Math.floor(Number(next.worldBoss.totalDamage) || 0));
   next.worldBoss.attacksToday = Math.max(0, Math.floor(Number(next.worldBoss.attacksToday) || 0));
+  if (next.evolution && !CLASS_EVOLUTIONS[next.className]?.[next.evolution]) next.evolution = null;
+  next.campaign = { completed: [], ...(next.campaign || {}) };
+  next.campaign.completed = Array.isArray(next.campaign.completed) ? next.campaign.completed : [];
+  next.season = { points: 0, claimed: [], premium: false, ...(next.season || {}) };
+  next.season.points = Math.max(0, Math.floor(Number(next.season.points) || 0));
+  next.season.claimed = Array.isArray(next.season.claimed) ? next.season.claimed : [];
+  next.tutorial = { done: false, step: 0, ...(next.tutorial || {}) };
+  next.blacksmith = { dust: 0, gems: 0, logs: [], ...(next.blacksmith || {}) };
+  next.blacksmith.dust = Math.max(0, Math.floor(Number(next.blacksmith.dust) || 0));
+  next.blacksmith.gems = Math.max(0, Math.floor(Number(next.blacksmith.gems) || 0));
+  next.blacksmith.logs = Array.isArray(next.blacksmith.logs) ? next.blacksmith.logs.slice(0, 40) : [];
+  next.coinRequests = Array.isArray(next.coinRequests) ? next.coinRequests.slice(0, 20) : [];
+  next.securityLogs = Array.isArray(next.securityLogs) ? next.securityLogs.slice(0, 80) : [];
 
   const savedBuildings = next.buildings && typeof next.buildings === "object" ? next.buildings : {};
   const citadelLevel = Math.max(1, Math.min(MAX_CITADEL_LEVEL, Math.floor(Number(savedBuildings.citadel?.level) || 1)));
@@ -589,10 +640,11 @@ function normalizeGame(game) {
     next.buildings[key] = building;
   });
 
-  next.inventory = Array.isArray(next.inventory) ? next.inventory.filter(Boolean).slice(0, 80) : [];
+  next.inventory = Array.isArray(next.inventory) ? next.inventory.filter(Boolean).slice(0, 80).map(normalizeItem) : [];
   next.equipment = { weapon: null, armor: null, ring: null, amulet: null, ...(next.equipment || {}) };
   Object.keys(SLOTS).forEach((slot) => {
     if (next.equipment[slot] && next.equipment[slot].slot !== slot) next.equipment[slot] = null;
+    if (next.equipment[slot]) next.equipment[slot] = normalizeItem(next.equipment[slot]);
   });
 
   next.mounts = { owned: ["brown_horse"], active: "brown_horse", ...(next.mounts || {}) };
@@ -687,6 +739,19 @@ function createItem(level = 1, source = "Monster", rarityBoost = 0) {
   };
 }
 
+
+function normalizeItem(item) {
+  if (!item || typeof item !== "object") return item;
+  const next = { ...item };
+  next.upgrade = Math.max(0, Math.min(15, Math.floor(Number(next.upgrade) || 0)));
+  next.gems = Array.isArray(next.gems) ? next.gems.slice(0, 3) : [];
+  const upgradeBonus = next.upgrade;
+  const gemBonus = next.gems.length;
+  next.stats = { hp: 0, attack: 0, defense: 0, mana: 0, ...(next.stats || {}) };
+  next.displayPower = Math.round((next.power || 0) + upgradeBonus * 80 + gemBonus * 120);
+  return next;
+}
+
 function itemStatsText(item) {
   if (!item) return "Empty";
   const parts = [];
@@ -694,17 +759,21 @@ function itemStatsText(item) {
   if (item.stats.attack) parts.push(`ATK +${item.stats.attack}`);
   if (item.stats.defense) parts.push(`DEF +${item.stats.defense}`);
   if (item.stats.mana) parts.push(`Mana +${item.stats.mana}`);
+  if (item.upgrade) parts.push(`+${item.upgrade}`);
+  if (item.gems?.length) parts.push(`${item.gems.length} gem${item.gems.length > 1 ? "s" : ""}`);
   return parts.join(" · ") || "No stats";
 }
 
 function equipmentBonus(game) {
   const bonus = { hp: 0, attack: 0, defense: 0, mana: 0, power: 0 };
   Object.values(game.equipment || {}).filter(Boolean).forEach((item) => {
-    bonus.hp += item.stats.hp || 0;
-    bonus.attack += item.stats.attack || 0;
-    bonus.defense += item.stats.defense || 0;
-    bonus.mana += item.stats.mana || 0;
-    bonus.power += item.power || 0;
+    const upgrade = Math.max(0, Number(item.upgrade) || 0);
+    const gems = Array.isArray(item.gems) ? item.gems.length : 0;
+    bonus.hp += (item.stats.hp || 0) + upgrade * 8 + gems * 14;
+    bonus.attack += (item.stats.attack || 0) + upgrade * 2 + gems * 3;
+    bonus.defense += (item.stats.defense || 0) + upgrade * 2 + gems * 3;
+    bonus.mana += (item.stats.mana || 0) + upgrade * 4 + gems * 8;
+    bonus.power += (item.power || 0) + upgrade * 80 + gems * 120;
   });
   return bonus;
 }
@@ -799,13 +868,14 @@ function getHeroStats(game) {
   const mount = getMountBonus(game);
   const paladin = getPaladinBattleBonus(game);
   const title = getTitleBonus(game);
+  const evolution = getEvolutionBonus(game);
   const vip = getVipBonus(game);
   const progression = getProgressionLevel(game);
 
-  const hp = Math.round((base.hp + levelBonus * 18 + (game.paragonLevel || 0) * 6 + b.citadel.level * 12 + gear.hp + mount.hp + paladin.hp + title.hp) * (1 + (vip.pvp || 0) / 200));
-  const attack = Math.round((base.attack + levelBonus * 4 + (game.paragonLevel || 0) * 1 + b.barracks.level * 3 + gear.attack + mount.attack + paladin.attack + title.attack) * (1 + (vip.pvp || 0) / 250));
-  const defense = Math.round((base.defense + levelBonus * 2 + Math.floor((game.paragonLevel || 0) * 0.7) + b.citadel.level * 2 + gear.defense + mount.defense + paladin.defense + title.defense) * (1 + (vip.pvp || 0) / 250));
-  const mana = base.mana + levelBonus * 7 + (game.paragonLevel || 0) * 2 + b.academy.level * 8 + gear.mana + mount.mana + paladin.mana + title.mana;
+  const hp = Math.round((base.hp + levelBonus * 18 + (game.paragonLevel || 0) * 6 + b.citadel.level * 12 + gear.hp + mount.hp + paladin.hp + title.hp + evolution.hp) * (1 + (vip.pvp || 0) / 200));
+  const attack = Math.round((base.attack + levelBonus * 4 + (game.paragonLevel || 0) * 1 + b.barracks.level * 3 + gear.attack + mount.attack + paladin.attack + title.attack + evolution.attack) * (1 + (vip.pvp || 0) / 250));
+  const defense = Math.round((base.defense + levelBonus * 2 + Math.floor((game.paragonLevel || 0) * 0.7) + b.citadel.level * 2 + gear.defense + mount.defense + paladin.defense + title.defense + evolution.defense) * (1 + (vip.pvp || 0) / 250));
+  const mana = base.mana + levelBonus * 7 + (game.paragonLevel || 0) * 2 + b.academy.level * 8 + gear.mana + mount.mana + paladin.mana + title.mana + evolution.mana;
   const power =
     100 +
     progression * 45 +
@@ -820,9 +890,10 @@ function getHeroStats(game) {
     mount.power +
     paladin.power +
     title.power +
+    evolution.power +
     (game.vip?.level || 0) * 180;
 
-  return { hp, attack, defense, mana, power, gear, mount, paladin };
+  return { hp, attack, defense, mana, power, gear, mount, paladin, evolution };
 }
 
 function getCityDefensePower(game) {
@@ -885,7 +956,7 @@ function createPublicProfile(game) {
     wallLevel: safe.buildings.wall?.level || 1,
     watchtowerLevel: safe.buildings.watchtower?.level || 1,
     shieldUntil: safe.city?.shieldUntil || null,
-    shieldActive: isShieldActive(safe),
+    shieldActivee: isShieldActivee(safe),
     updatedAt: new Date().toISOString()
   };
 }
@@ -1460,7 +1531,7 @@ function CityVisualMap({ game, onUpgrade }) {
 
 function ShieldPanel({ game, setGame }) {
   const [now, setNow] = useState(Date.now());
-  const active = isShieldActive(game, now);
+  const active = isShieldActivee(game, now);
   const remaining = shieldRemaining(game, now);
 
   useEffect(() => {
@@ -1480,7 +1551,7 @@ function ShieldPanel({ game, setGame }) {
     <div className="shield-panel">
       <div>
         <h3>🛡️ Shield Protection</h3>
-        <p>{active ? `Active for ${formatCountdown(remaining)} · until ${formatDateTime(game.city.shieldUntil)}` : "No active shield. The city can be attacked."}</p>
+        <p>{active ? `Activee for ${formatCountdown(remaining)} · until ${formatDateTime(game.city.shieldUntil)}` : "No active shield. The city can be attacked."}</p>
       </div>
       <div className="shield-actions">
         <button disabled={!canAfford(game.resources, { diamonds: 25 })} onClick={() => buyShield(2, { diamonds: 25 })}>Shield 2h · 25 diamonds</button>
@@ -1583,6 +1654,43 @@ function City({ game, setGame, session }) {
   );
 }
 
+
+function getCombatSpecials(game, heroStats) {
+  const titlePower = getTitleBonus(game).power || 0;
+  const critChance = Math.min(35, 8 + Math.floor(heroStats.attack / 120) + Math.floor((game.vip?.level || 0) / 2));
+  const dodgeChance = Math.min(22, 5 + Math.floor(heroStats.defense / 180));
+  const blockChance = Math.min(28, 6 + Math.floor(heroStats.defense / 120) + Math.floor(titlePower / 400));
+  return { critChance, dodgeChance, blockChance };
+}
+
+function rollPercent(chance) {
+  return Math.random() * 100 < chance;
+}
+
+function advancedSkillFor(game, slot = 1) {
+  const progression = getProgressionLevel(game);
+  const className = game.className;
+  const skills = {
+    Knight: [
+      { name: "Shield Slam", cost: 10, power: 1.45, min: 1 },
+      { name: "Execute", cost: 18, power: 2.35, min: 35 },
+      { name: "Divine Guard", cost: 22, power: 1.85, min: 70 }
+    ],
+    Mage: [
+      { name: "Fireball", cost: 12, power: 1.7, min: 1 },
+      { name: "Meteor", cost: 26, power: 2.75, min: 45 },
+      { name: "Arcane Nova", cost: 32, power: 3.1, min: 85 }
+    ],
+    Archer: [
+      { name: "Poison Arrow", cost: 10, power: 1.55, min: 1 },
+      { name: "Multi Shot", cost: 20, power: 2.25, min: 40 },
+      { name: "Critical Focus", cost: 25, power: 2.85, min: 80 }
+    ]
+  };
+  const list = skills[className] || skills.Knight;
+  return list[Math.max(0, Math.min(list.length - 1, slot - 1))] || list[0];
+}
+
 function Battle({ game, setGame }) {
   const heroStats = useMemo(() => getHeroStats(game), [game]);
   const [enemy, setEnemy] = useState(() => randomEnemy(getProgressionLevel(game)));
@@ -1591,11 +1699,22 @@ function Battle({ game, setGame }) {
   const [log, setLog] = useState(["An enemy appears near the citadel."]);
   const [busy, setBusy] = useState(false);
   const [guildHelper, setGuildHelper] = useState(null);
+  const [autoBattle, setAutoBattle] = useState(false);
+  const [battleSpeed, setBattleSpeed] = useState(1);
 
   useEffect(() => {
     setHeroHp(heroStats.hp);
     setMana(heroStats.mana);
   }, [heroStats.hp, heroStats.mana]);
+
+  useEffect(() => {
+    if (!autoBattle || busy || enemy.hp <= 0 || heroHp <= 0) return;
+    const timer = window.setTimeout(() => {
+      const skill = mana >= CLASSES[game.className].skill.cost ? "skill" : "normal";
+      attack(skill, 1);
+    }, Math.max(180, 900 / battleSpeed));
+    return () => window.clearTimeout(timer);
+  }, [autoBattle, busy, enemy.hp, heroHp, mana, battleSpeed]);
 
   function addLog(text) {
     setLog((prev) => [text, ...prev].slice(0, 8));
@@ -1678,7 +1797,17 @@ function Battle({ game, setGame }) {
   }
 
   function enemyTurn(currentHeroHp, currentEnemy) {
-    const dmg = Math.max(3, Math.round(currentEnemy.attack - heroStats.defense * 0.55 + Math.random() * 8));
+    const specials = getCombatSpecials(game, heroStats);
+    if (rollPercent(specials.dodgeChance)) {
+      addLog(`Dodge! You avoided ${currentEnemy.name}'s attack.`);
+      setBusy(false);
+      return;
+    }
+    let dmg = Math.max(3, Math.round(currentEnemy.attack - heroStats.defense * 0.55 + Math.random() * 8));
+    if (rollPercent(specials.blockChance)) {
+      dmg = Math.max(1, Math.round(dmg * 0.45));
+      addLog(`Block! Incoming damage was reduced.`);
+    }
     const after = Math.max(0, currentHeroHp - dmg);
     setHeroHp(after);
     addLog(`${currentEnemy.name} hits for ${dmg} damage.`);
@@ -1686,28 +1815,45 @@ function Battle({ game, setGame }) {
     else setBusy(false);
   }
 
-  function attack(type) {
+  function attack(type, skillSlot = 1) {
     if (busy) return;
     if (game.resources.energy <= 0) {
       addLog("You have no energy left. Collect resources.");
+      setAutoBattle(false);
       return;
     }
 
     const classData = CLASSES[game.className];
+    const specials = getCombatSpecials(game, heroStats);
     let nextMana = mana;
     let damage;
+    let skill = skillSlot === 1 ? classData.skill : advancedSkillFor(game, skillSlot);
 
     if (type === "skill") {
-      if (mana < classData.skill.cost) {
+      if (getProgressionLevel(game) < (skill.min || 1)) {
+        addLog(`${skill.name} unlocks at level ${skill.min}.`);
+        return;
+      }
+      if (mana < skill.cost) {
         addLog("Not enough mana for the skill.");
         return;
       }
-      nextMana -= classData.skill.cost;
-      damage = Math.max(8, Math.round(heroStats.attack * classData.skill.power - enemy.defense + Math.random() * 12));
-      addLog(`${classData.skill.name}: ${damage} damage.`);
+      nextMana -= skill.cost;
+      damage = Math.max(8, Math.round(heroStats.attack * skill.power - enemy.defense + Math.random() * 12));
+      if (rollPercent(specials.critChance)) {
+        damage = Math.round(damage * 1.75);
+        addLog(`Critical hit! ${skill.name}: ${damage} damage.`);
+      } else {
+        addLog(`${skill.name}: ${damage} damage.`);
+      }
     } else {
       damage = Math.max(5, Math.round(heroStats.attack - enemy.defense * 0.6 + Math.random() * 10));
-      addLog(`Normal attack: ${damage} damage.`);
+      if (rollPercent(specials.critChance)) {
+        damage = Math.round(damage * 1.6);
+        addLog(`Critical normal attack: ${damage} damage.`);
+      } else {
+        addLog(`Normal attack: ${damage} damage.`);
+      }
     }
 
     if (heroStats.paladin.damage) {
@@ -1731,7 +1877,7 @@ function Battle({ game, setGame }) {
       return;
     }
 
-    window.setTimeout(() => enemyTurn(heroHp, enemyAfter), 350);
+    window.setTimeout(() => enemyTurn(heroHp, enemyAfter), Math.max(120, 420 / battleSpeed));
   }
 
   return (
@@ -1742,7 +1888,7 @@ function Battle({ game, setGame }) {
             <h2>Battle Arena</h2>
             <p>Turn-based battles. After victory you have a chance for an item drop.</p>
           </div>
-          <button onClick={newEnemy}>Inamic nou</button>
+          <button onClick={newEnemy}>New enemy</button>
         </div>
 
         <div className="combatants">
@@ -1764,10 +1910,12 @@ function Battle({ game, setGame }) {
 
         <div className="actions">
           <button className="primary" disabled={busy} onClick={() => attack("normal")}>Normal attack</button>
-          <button className="primary alt" disabled={busy} onClick={() => attack("skill")}>
-            {CLASSES[game.className].skill.name}
-          </button>
+          <button className="primary alt" disabled={busy} onClick={() => attack("skill", 1)}>{CLASSES[game.className].skill.name}</button>
+          <button disabled={busy} onClick={() => attack("skill", 2)}>{advancedSkillFor(game, 2).name}</button>
+          <button disabled={busy} onClick={() => attack("skill", 3)}>{advancedSkillFor(game, 3).name}</button>
           <button disabled={busy || Boolean(guildHelper) || !game.guild?.id} onClick={callGuildHelper}>🤝 Call ally</button>
+          <button onClick={() => setAutoBattle((v) => !v)}>{autoBattle ? "Stop auto battle" : "Auto battle"}</button>
+          <button onClick={() => setBattleSpeed((v) => v >= 3 ? 1 : v + 1)}>Speed x{battleSpeed}</button>
         </div>
       </div>
 
@@ -1941,7 +2089,7 @@ function Dungeon({ game, setGame }) {
       return;
     }
 
-    window.setTimeout(() => enemyTurn(heroHp, enemyAfter), 350);
+    window.setTimeout(() => enemyTurn(heroHp, enemyAfter), Math.max(120, 420 / battleSpeed));
   }
 
   return (
@@ -2248,6 +2396,19 @@ function Shop({ game, setGame }) {
   }
   next.worldBoss.totalDamage = Math.max(0, Math.floor(Number(next.worldBoss.totalDamage) || 0));
   next.worldBoss.attacksToday = Math.max(0, Math.floor(Number(next.worldBoss.attacksToday) || 0));
+  if (next.evolution && !CLASS_EVOLUTIONS[next.className]?.[next.evolution]) next.evolution = null;
+  next.campaign = { completed: [], ...(next.campaign || {}) };
+  next.campaign.completed = Array.isArray(next.campaign.completed) ? next.campaign.completed : [];
+  next.season = { points: 0, claimed: [], premium: false, ...(next.season || {}) };
+  next.season.points = Math.max(0, Math.floor(Number(next.season.points) || 0));
+  next.season.claimed = Array.isArray(next.season.claimed) ? next.season.claimed : [];
+  next.tutorial = { done: false, step: 0, ...(next.tutorial || {}) };
+  next.blacksmith = { dust: 0, gems: 0, logs: [], ...(next.blacksmith || {}) };
+  next.blacksmith.dust = Math.max(0, Math.floor(Number(next.blacksmith.dust) || 0));
+  next.blacksmith.gems = Math.max(0, Math.floor(Number(next.blacksmith.gems) || 0));
+  next.blacksmith.logs = Array.isArray(next.blacksmith.logs) ? next.blacksmith.logs.slice(0, 40) : [];
+  next.coinRequests = Array.isArray(next.coinRequests) ? next.coinRequests.slice(0, 20) : [];
+  next.securityLogs = Array.isArray(next.securityLogs) ? next.securityLogs.slice(0, 80) : [];
       return next;
     }, `Class was changed to ${classChoice} with S-Coins.`);
   }
@@ -2309,7 +2470,7 @@ function Shop({ game, setGame }) {
           <article className="shop-card premium">
             <h3>🛡️ Shield 24h</h3>
             <p>Premium protection for the city for 24 hours.</p>
-            <button onClick={() => buy({ sCoins: 3 }, (next) => addShield(next, 24), "Shield 24h activat.")} disabled={!canAfford(game.resources, { sCoins: 3 })}>Buy · 3 S-Coins</button>
+            <button onClick={() => buy({ sCoins: 3 }, (next) => addShield(next, 24), "Shield 24h activated.")} disabled={!canAfford(game.resources, { sCoins: 3 })}>Buy · 3 S-Coins</button>
           </article>
         </div>
       </div>
@@ -2319,14 +2480,14 @@ function Shop({ game, setGame }) {
         <p>S-Coin can only be purchased by contacting the game creator. The creator manually adds coins to the account after confirmation.</p>
         <div className="level-rules">
           <div><b>Change class</b><span>10 S-Coins · you keep progress, items and city</span></div>
-          <div><b>Energie instant</b><span>1 S-Coin · umple energia la maxim</span></div>
+          <div><b>Instant energy</b><span>1 S-Coin · fills energy to maximum</span></div>
           <div><b>Finish constructions</b><span>variable cost · appears directly on the building under construction</span></div>
           <div><b>Premium chest</b><span>4 S-Coins · loot with a better Legendary chance</span></div>
           <div><b>Rename hero</b><span>2 S-Coins · change hero name</span></div>
         </div>
 
         <div className="shop-control">
-          <label>Change class cu S-Coins</label>
+          <label>Change class with S-Coins</label>
           <select value={classChoice} onChange={(e) => setClassChoice(e.target.value)}>
             {Object.keys(CLASSES).map((className) => <option key={className} value={className}>{className}</option>)}
           </select>
@@ -2579,11 +2740,22 @@ function TradeCenter({ game, setGame, session }) {
   );
 }
 
-function Hero({ game }) {
+function Hero({ game, setGame }) {
   const stats = getHeroStats(game);
   const selectedClass = CLASSES[game.className];
   const xpLabel = getXpLabel(game);
   const maxed = game.level >= MAX_HERO_LEVEL && (game.paragonLevel || 0) >= MAX_PARAGON_LEVEL;
+  const availableEvolutions = CLASS_EVOLUTIONS[game.className] || {};
+
+  function chooseEvolution(name) {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      if (getProgressionLevel(next) < 50 || !CLASS_EVOLUTIONS[next.className]?.[name]) return next;
+      next.evolution = name;
+      addMail(next, "Class evolution", `${next.className} evolved into ${name}.`, "hero");
+      return next;
+    });
+  }
 
   return (
     <section className="grid two">
@@ -2629,7 +2801,16 @@ function Hero({ game }) {
         </div>
 
         <div className="notice locked">
-          🔒 For another class, you need to create a new hero / new account.
+          🔒 For another class, you need to create a new hero / new account. Evolution unlocks at level 50.
+        </div>
+        <h3>Class evolution</h3>
+        <div className="class-list">
+          {Object.entries(availableEvolutions).map(([name, data]) => (
+            <button key={name} className={game.evolution === name ? "class-card active" : "class-card"} disabled={getProgressionLevel(game) < 50} onClick={() => chooseEvolution(name)}>
+              <span className="class-emoji">{data.emoji}</span>
+              <span><b>{name}</b><small>{data.text}</small><small>Power +{data.bonus.power}</small></span>
+            </button>
+          ))}
         </div>
       </div>
     </section>
@@ -2714,7 +2895,7 @@ function Companions({ game, setGame }) {
                 <small>HP +{mount.bonus.hp} · ATK +{mount.bonus.attack} · DEF +{mount.bonus.defense} · Mana +{mount.bonus.mana}</small>
                 <small>Power +{mount.bonus.power}</small>
                 <button disabled={!owned && !affordable} onClick={() => unlockMount(id)}>
-                  {active ? "Activ" : owned ? "Equip" : `Unlock: ${mount.cost.gold} gold · ${mount.cost.wood} wood · ${mount.cost.crystals} crystals`}
+                  {active ? "Active" : owned ? "Equip" : `Unlock: ${mount.cost.gold} gold · ${mount.cost.wood} wood · ${mount.cost.crystals} crystals`}
                 </button>
               </article>
             );
@@ -2785,8 +2966,8 @@ function Arena({ game, setGame, session }) {
   }, [session]);
 
   const opponents = players.filter((player) => player.userId !== session?.user?.id);
-  const sameGuildOpponent = selectedOpponent && game.guild?.id && selectedOpponent.profile?.guildId === game.guild.id;
   const selectedOpponent = opponents.find((player) => player.userId === selectedId) || opponents[0];
+  const sameGuildOpponent = Boolean(selectedOpponent && game.guild?.id && selectedOpponent.profile?.guildId === game.guild.id);
 
   async function launchCityAttack() {
     if (!selectedOpponent || !session || !supabase) {
@@ -2841,7 +3022,7 @@ function Arena({ game, setGame, session }) {
     });
 
     setBattleLog([
-      result.won ? `Victory PvP contra ${selectedOpponent.playerName}!` : `You lost PvP against ${selectedOpponent.playerName}.`,
+      result.won ? `PvP victory against ${selectedOpponent.playerName}!` : `You lost PvP against ${selectedOpponent.playerName}.`,
       `Reward: ${result.reward.gold} gold · ${result.reward.wood} wood · ${result.reward.crystals} crystals · ${result.reward.xp} XP`,
       ...result.log
     ]);
@@ -3643,7 +3824,7 @@ function Inbox({ game, setGame, session }) {
                   <span>Damage: {Object.entries(result.buildingDamage).map(([key, val]) => `${key} ${val.from}→${val.to}${val.breached ? " broken" : ""}`).join(" · ")}</span>
                 )}
                 {result.stolen && (
-                  <span>Furat: {result.stolen.gold || 0} gold · {result.stolen.wood || 0} wood · {result.stolen.crystals || 0} crystals · {result.stolen.diamonds || 0} diamonds · S-Coins 0</span>
+                  <span>Stolen: {result.stolen.gold || 0} gold · {result.stolen.wood || 0} wood · {result.stolen.crystals || 0} crystals · {result.stolen.diamonds || 0} diamonds · S-Coins 0</span>
                 )}
                 <small>{formatDateTime(attack.resolved_at || attack.lands_at)}</small>
               </div>
@@ -3684,6 +3865,184 @@ function Quests({ game, setGame }) {
       })}
     </section>
   );
+}
+
+
+function BlacksmithPanel({ game, setGame }) {
+  const [selectedId, setSelectedId] = useState("");
+  const allItems = [...(game.inventory || []), ...Object.values(game.equipment || {}).filter(Boolean)];
+  const selectedItem = allItems.find((item) => item.id === selectedId) || allItems[0];
+
+  function updateItemEverywhere(next, updated) {
+    next.inventory = next.inventory.map((item) => item.id === updated.id ? updated : item);
+    Object.keys(next.equipment).forEach((slot) => {
+      if (next.equipment[slot]?.id === updated.id) next.equipment[slot] = updated;
+    });
+  }
+
+  function upgradeItem() {
+    if (!selectedItem) return;
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      const item = normalizeItem(selectedItem);
+      const level = item.upgrade || 0;
+      if (level >= 15) return next;
+      const cost = { gold: 350 + level * 220, crystals: 25 + level * 12 };
+      const paid = payCost(next, cost);
+      if (!paid.paid) return next;
+      const updated = normalizeItem({ ...item, upgrade: level + 1, value: item.value + 80 + level * 20 });
+      updateItemEverywhere(paid.game, updated);
+      paid.game.blacksmith.logs.unshift(`Upgraded ${updated.name} to +${updated.upgrade}.`);
+      paid.game.season.points += 15;
+      addMail(paid.game, "Blacksmith upgrade", `${updated.name} is now +${updated.upgrade}.`, "blacksmith");
+      return paid.game;
+    });
+  }
+
+  function socketGem() {
+    if (!selectedItem) return;
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      const item = normalizeItem(selectedItem);
+      if ((item.gems || []).length >= 3 || next.blacksmith.gems < 1) return next;
+      next.blacksmith.gems -= 1;
+      const updated = normalizeItem({ ...item, gems: [...(item.gems || []), { type: "Ruby", level: 1 }] });
+      updateItemEverywhere(next, updated);
+      next.blacksmith.logs.unshift(`Socketed a gem into ${updated.name}.`);
+      next.season.points += 10;
+      return next;
+    });
+  }
+
+  function dismantleItem() {
+    if (!selectedItem) return;
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      if (Object.values(next.equipment).some((item) => item?.id === selectedItem.id)) return next;
+      next.inventory = next.inventory.filter((item) => item.id !== selectedItem.id);
+      next.blacksmith.dust += Math.max(5, Math.round((selectedItem.power || 50) / 25));
+      if (Math.random() < 0.35) next.blacksmith.gems += 1;
+      next.blacksmith.logs.unshift(`Dismantled ${selectedItem.name}.`);
+      next.season.points += 8;
+      return next;
+    });
+  }
+
+  function craftItem() {
+    setGame((prev) => {
+      const next = normalizeGame(prev);
+      const cost = { gold: 900, wood: 400, crystals: 90 };
+      const paid = payCost(next, cost);
+      if (!paid.paid || paid.game.inventory.length >= 80) return next;
+      const item = createItem(getProgressionLevel(paid.game), "Blacksmith Craft", 2);
+      paid.game.inventory.push(item);
+      paid.game.blacksmith.logs.unshift(`Crafted ${item.name}.`);
+      paid.game.season.points += 20;
+      return paid.game;
+    });
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="section-title">
+          <div><h2>Blacksmith</h2><p>Upgrade, socket, dismantle and craft gear.</p></div>
+          <div className="power-summary">✨ Dust {game.blacksmith.dust} · 💠 Gems {game.blacksmith.gems}</div>
+        </div>
+        <label>Select item</label>
+        <select value={selectedItem?.id || ""} onChange={(e) => setSelectedId(e.target.value)}>
+          {allItems.length === 0 && <option value="">No items</option>}
+          {allItems.map((item) => <option key={item.id} value={item.id}>{item.name} +{item.upgrade || 0} · {SLOTS[item.slot]?.label}</option>)}
+        </select>
+        {selectedItem && <div className="notice">{selectedItem.name}: {itemStatsText(selectedItem)} · Power {selectedItem.displayPower || selectedItem.power}</div>}
+        <div className="actions">
+          <button className="primary" disabled={!selectedItem} onClick={upgradeItem}>Upgrade item</button>
+          <button disabled={!selectedItem || game.blacksmith.gems < 1} onClick={socketGem}>Socket gem</button>
+          <button disabled={!selectedItem} onClick={dismantleItem}>Dismantle</button>
+          <button className="primary alt" onClick={craftItem}>Craft random item</button>
+        </div>
+      </div>
+      <div className="panel">
+        <h2>Forge log</h2>
+        <div className="battle-log">{(game.blacksmith.logs || []).slice(0, 10).map((line, i) => <div key={i}>{line}</div>)}</div>
+      </div>
+    </section>
+  );
+}
+
+function CampaignPanel({ game, setGame }) {
+  function claimChapter(chapter) {
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      if (next.campaign.completed.includes(chapter.id) || getProgressionLevel(next) < chapter.req) return next;
+      next = applyReward(next, chapter.reward);
+      next.campaign.completed.push(chapter.id);
+      next.season.points += 50;
+      addMail(next, "Campaign completed", `${chapter.title}: ${rewardText(chapter.reward)}.`, "campaign");
+      return next;
+    });
+  }
+  return (
+    <section className="grid three">
+      {CAMPAIGN_CHAPTERS.map((chapter) => {
+        const done = game.campaign.completed.includes(chapter.id);
+        const locked = getProgressionLevel(game) < chapter.req;
+        return <article className="panel quest" key={chapter.id}>
+          <h3>📜 {chapter.title}</h3><p>{chapter.text}</p>
+          <small>Required level {chapter.req} · Reward: {rewardText(chapter.reward)}</small>
+          <button className="primary" disabled={done || locked} onClick={() => claimChapter(chapter)}>{done ? "Completed" : locked ? "Locked" : "Complete chapter"}</button>
+        </article>;
+      })}
+    </section>
+  );
+}
+
+function SeasonPanel({ game, setGame }) {
+  function claim(reward) {
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      if (next.season.points < reward.points || next.season.claimed.includes(reward.tier)) return next;
+      next = applyReward(next, reward.reward);
+      next.season.claimed.push(reward.tier);
+      addMail(next, "Season reward", `Tier ${reward.tier}: ${rewardText(reward.reward)}.`, "season");
+      return next;
+    });
+  }
+  function activatePremium() {
+    setGame((prev) => {
+      const paid = payCost(prev, { sCoins: 10 });
+      if (!paid.paid) return normalizeGame(prev);
+      paid.game.season.premium = true;
+      addMail(paid.game, "Premium Battle Pass", "Premium season track activated.", "season");
+      return paid.game;
+    });
+  }
+  return (
+    <section className="grid two">
+      <div className="panel"><h2>Season / Battle Pass</h2><p>Earn points from battles, crafting, campaign and guild activity.</p><div className="power-summary">⭐ {game.season.points} season points · {game.season.premium ? "Premium active" : "Free track"}</div><button className="primary big" disabled={game.season.premium || game.resources.sCoins < 10} onClick={activatePremium}>Activate premium · 10 S-Coins</button></div>
+      <div className="panel"><h2>Rewards</h2><div className="battle-log">{SEASON_REWARDS.map((r) => <div key={r.tier}><b>Tier {r.tier}</b> · {r.points} points · {rewardText(r.reward)} <button disabled={game.season.points < r.points || game.season.claimed.includes(r.tier)} onClick={() => claim(r)}>{game.season.claimed.includes(r.tier) ? "Claimed" : "Claim"}</button></div>)}</div></div>
+    </section>
+  );
+}
+
+function KingdomMapPanel({ game }) {
+  const areas = ["Royal Citadel", "Resource Fields", "Enemy Camps", "Alliance Territory", "World Boss Lair", "Marketplace Road"];
+  return <section className="panel"><h2>Expanded Kingdom Map</h2><p>Strategic overview for future territory control, fog of war and resource nodes.</p><div className="kingdom-map-grid">{areas.map((area, i) => <div className="map-node" key={area}><span>{["🏰","🌾","💀","🛡️","🐉","🛒"][i]}</span><b>{area}</b><small>Power influence {Math.round(getHeroStats(game).power / (i + 3))}</small></div>)}</div></section>;
+}
+
+function TutorialPanel({ game, setGame }) {
+  const steps = ["Create your hero", "Collect hourly resources", "Win a battle", "Equip an item", "Join or create an alliance", "Protect your city"];
+  function finishTutorial() {
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      if (next.tutorial.done) return next;
+      next.tutorial.done = true;
+      next = applyReward(next, { gold: 1000, wood: 700, crystals: 80, diamonds: 10, xp: 120 });
+      addMail(next, "Tutorial completed", "Welcome reward received.", "tutorial");
+      return next;
+    });
+  }
+  return <section className="grid two"><div className="panel"><h2>New Player Tutorial</h2><p>Guided checklist for new players.</p><div className="battle-log">{steps.map((step, i) => <div key={step}>✅ Step {i + 1}: {step}</div>)}</div><button className="primary big" disabled={game.tutorial.done} onClick={finishTutorial}>{game.tutorial.done ? "Tutorial reward claimed" : "Finish tutorial and claim reward"}</button></div><div className="panel"><h2>Notifications</h2><p>Important events already arrive in Inbox: raids, sales, rewards, guild and boss activity.</p><div className="notice">Browser/PWA notification hooks are prepared by the PWA files.</div></div></section>;
 }
 
 function Game({ session }) {
@@ -3814,6 +4173,11 @@ function Game({ session }) {
         <button className={tab === "progress" ? "active" : ""} onClick={() => setTab("progress")}>⭐ VIP</button>
         <button className={tab === "inbox" ? "active" : ""} onClick={() => setTab("inbox")}>📩 Inbox</button>
         <button className={tab === "battle" ? "active" : ""} onClick={() => setTab("battle")}>💀 Battle</button>
+        <button className={tab === "blacksmith" ? "active" : ""} onClick={() => setTab("blacksmith")}>🔨 Blacksmith</button>
+        <button className={tab === "campaign" ? "active" : ""} onClick={() => setTab("campaign")}>📖 Campaign</button>
+        <button className={tab === "season" ? "active" : ""} onClick={() => setTab("season")}>🎟️ Season</button>
+        <button className={tab === "kingdomMap" ? "active" : ""} onClick={() => setTab("kingdomMap")}>🧭 Map</button>
+        <button className={tab === "tutorial" ? "active" : ""} onClick={() => setTab("tutorial")}>🎮 Tutorial</button>
         <button className={tab === "world" ? "active" : ""} onClick={() => setTab("world")}>🗺️ World</button>
         <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>🎒 Inventory</button>
         <button className={tab === "shop" ? "active" : ""} onClick={() => setTab("shop")}>🛒 Shop</button>
@@ -3826,7 +4190,7 @@ function Game({ session }) {
         <button className={tab === "worldBoss" ? "active" : ""} onClick={() => setTab("worldBoss")}>🐉 World Boss</button>
         {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Quests</button>
-        <button className="danger-tab" onClick={resetSave}>Reset progres</button>
+        <button className="danger-tab" onClick={resetSave}>Reset progress</button>
       </nav>
 
       {tab === "city" && <City game={game} setGame={setGame} session={session} />}
@@ -3834,11 +4198,16 @@ function Game({ session }) {
       {tab === "progress" && <ProgressionPanel game={game} setGame={setGame} />}
       {tab === "inbox" && <Inbox game={game} setGame={setGame} session={session} />}
       {tab === "battle" && <Battle game={game} setGame={setGame} />}
+      {tab === "blacksmith" && <BlacksmithPanel game={game} setGame={setGame} />}
+      {tab === "campaign" && <CampaignPanel game={game} setGame={setGame} />}
+      {tab === "season" && <SeasonPanel game={game} setGame={setGame} />}
+      {tab === "kingdomMap" && <KingdomMapPanel game={game} />}
+      {tab === "tutorial" && <TutorialPanel game={game} setGame={setGame} />}
       {tab === "world" && <Dungeon game={game} setGame={setGame} />}
       {tab === "inventory" && <Inventory game={game} setGame={setGame} />}
       {tab === "shop" && <Shop game={game} setGame={setGame} />}
       {tab === "trade" && <TradeCenter game={game} setGame={setGame} session={session} />}
-      {tab === "hero" && <Hero game={game} />}
+      {tab === "hero" && <Hero game={game} setGame={setGame} />}
       {tab === "companions" && <Companions game={game} setGame={setGame} />}
       {tab === "arena" && <Arena game={game} setGame={setGame} session={session} />}
       {tab === "guild" && <GuildPanel game={game} setGame={setGame} session={session} />}
@@ -3868,7 +4237,7 @@ class AppErrorBoundary extends React.Component {
             <h1>S-Fleet Fantasy War ⚔️</h1>
             <h2>The game caught an error, but we will not leave a black screen anymore.</h2>
             <p>Press Reload. If the problem continues, enter again after uploading the complete update to GitHub and running the SQL for leaderboard.</p>
-            <div className="notice">Detaliu tehnic: {this.state.message}</div>
+            <div className="notice">Technical detail: {this.state.message}</div>
             <button className="primary big" onClick={() => window.location.reload()}>Reload game</button>
           </section>
         </main>
@@ -3911,7 +4280,7 @@ function AppCore() {
         <Game session={null} />
         <div className="floating-demo">
           Demo local
-          {hasSupabase && <button onClick={() => setDemoMode(false)}>Activate login</button>}
+          {hasSupabase && <button onClick={() => setDemoMode(false)}>Activeate login</button>}
         </div>
       </>
     );

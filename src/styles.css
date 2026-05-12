@@ -2273,3 +2273,34 @@ select:focus {
   .achievement-grid,
   .auction-controls { grid-template-columns: 1fr; }
 }
+
+.kingdom-map-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.map-node {
+  min-height: 130px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 24px;
+  padding: 18px;
+  background: linear-gradient(135deg, rgba(251,191,36,.10), rgba(255,255,255,.04));
+  display: grid;
+  gap: 8px;
+}
+
+.map-node span {
+  font-size: 34px;
+}
+
+.map-node small {
+  color: #cbd5e1;
+}
+
+@media (max-width: 900px) {
+  .kingdom-map-grid {
+    grid-template-columns: 1fr;
+  }
+}
