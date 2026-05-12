@@ -206,8 +206,8 @@ $$;
 
 grant execute on function public.claim_market_sales() to authenticated;
 
--- S-Fleet Fantasy War ⚔️ — Update 9
--- Admin pe email, Guild / Alianță, City Attacks cu 10 minute travel time.
+-- S-Fleet Fantasy War ⚔️ — Update 10
+-- Admin pe email, Guild / Alianță, City Attacks cu 10 minute travel time + Shield Protection.
 
 -- Admin users: adaugă manual emailul tău aici după ce rulezi scriptul:
 -- insert into public.admin_users(email) values ('EMAILUL_TAU') on conflict (email) do nothing;
@@ -503,6 +503,12 @@ begin
 
   if defender_profile is null then
     raise exception 'Target player not found';
+  end if;
+
+  if defender_profile ? 'shieldUntil'
+     and nullif(defender_profile->>'shieldUntil', '') is not null
+     and (defender_profile->>'shieldUntil')::timestamptz > now() then
+    raise exception 'Target city has active shield protection';
   end if;
 
   insert into public.city_attacks(

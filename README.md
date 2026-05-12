@@ -1,18 +1,22 @@
-# S-Fleet Fantasy War ⚔️ — Update 9
+# S-Fleet Fantasy War ⚔️ — Update 10
 
-Update 9 adaugă:
+Update 10 adaugă sistemele zilnice și rezolvă problema cu energia care revenea la 10 după consum.
 
-- **Guild / Alianță**
-- **Admin Panel** pe email
-- **Protection Wall** la Citadel, crescut separat până la nivel 10
-- **Observation Tower** pentru atacuri incoming
-- **Atacuri pe orașele jucătorilor** cu timp de drum de 10 minute
-- buton în Arena: **Trimite atac spre oraș · 10 min**
-- City Defense panel în tabul Oraș
+## Ce conține
 
-## Important: SQL obligatoriu
+- Daily Login Rewards pe 7 zile
+- Daily Quests cu reset zilnic
+- Inbox / Mail pentru reward-uri, shield, vânzări și progres
+- Battle Reports pentru atacurile pe oraș
+- Shield Protection 2h / 8h / 24h
+- verificare shield în Supabase pentru city attacks
+- buton **Vinde tot inventarul**
+- fix energie: energia curentă rămâne 0 după consum și nu revine automat la 10
+- energia maximă respectă regula: **level 1 = 10**, apoi **+1 / level sau Paragon**
 
-Pentru Update 9 trebuie rulat `supabase/schema.sql` în Supabase:
+## Important pentru Supabase
+
+Pentru Shield Protection la atacurile pe oraș, rulează scriptul SQL nou:
 
 ```txt
 Supabase
@@ -22,63 +26,32 @@ Supabase
 → Run
 ```
 
-## Activare Admin Panel pe email
+Scriptul păstrează datele existente și actualizează funcția `launch_city_attack`, astfel încât orașele cu shield activ nu pot fi atacate.
 
-După ce rulezi SQL-ul, adaugă emailul contului care trebuie să fie admin.
+## Cum urci update-ul
 
-În Supabase > SQL Editor rulezi:
-
-```sql
-insert into public.admin_users(email)
-values ('EMAILUL_TAU_AICI')
-on conflict (email) do nothing;
+```txt
+GitHub
+→ repository s-fleet-fantasy-war
+→ Add file
+→ Upload files
+→ tragi toate fișierele/folderele din ZIP
+→ Commit changes
 ```
 
-Exemplu:
+Netlify va face deploy automat.
 
-```sql
-insert into public.admin_users(email)
-values ('admin@example.com')
-on conflict (email) do nothing;
+Dacă nu pornește automat:
+
+```txt
+Netlify
+→ site-ul tău
+→ Deploys
+→ Trigger deploy
+→ Deploy site
 ```
 
-Apoi intri în joc cu acel cont, iar tabul **🧰 Admin** apare automat.
-
-## Admin poate modifica
-
-Admin Panel permite editarea salvării JSON pentru orice jucător:
-
-- resurse
-- level / paragon
-- clădiri
-- inventory
-- echipamente
-- mount-uri
-- Paladin
-- guild info
-- orice alt câmp din salvare
-
-## City Attacks
-
-Atacurile spre orașe funcționează așa:
-
-1. Intri în **Arena**.
-2. Alegi un jucător.
-3. Apeși **Trimite atac spre oraș · 10 min**.
-4. Atacul apare la tine ca outgoing.
-5. La defender apare ca incoming în Oraș, prin **Observation Tower**.
-6. După 10 minute se rezolvă automat când unul dintre jucători intră/refresh în joc.
-
-## Clădiri noi
-
-- **Protection Wall**: max level 10, crește City Defense.
-- **Observation Tower**: arată atacurile incoming.
-
-## Deploy
-
-Înlocuiești fișierele din GitHub cu cele din ZIP, apoi Netlify face deploy automat.
-
-Build settings rămân:
+## Build settings Netlify
 
 ```txt
 Build command: npm run build
@@ -86,3 +59,12 @@ Publish directory: dist
 Base directory: gol
 Functions directory: gol
 ```
+
+## Environment variables rămân aceleași
+
+```txt
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+Nu pune parola bazei de date, nu pune service_role, nu pune secret key.
