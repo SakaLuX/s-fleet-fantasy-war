@@ -8,7 +8,7 @@ const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : n
 const MAX_CITADEL_LEVEL = 50;
 const MAX_HERO_LEVEL = 100;
 const MAX_PARAGON_LEVEL = 250;
-const GAME_VERSION_LABEL = "Update 73 · Server-Side Economy Hardening";
+const GAME_VERSION_LABEL = "Update 80 · Public Beta Launch";
 
 const DEFAULT_BALANCE_V52 = {
   configVersion: 52,
@@ -133,24 +133,103 @@ const UPDATE_68_73_SYSTEMS = [
   { update: "Update 73", title: "Server-Side Economy Hardening", emoji: "🔐", text: "Economy audit, marketplace safety caps, server validation checklist and admin hardening tools." }
 ];
 
+
+
+const UPDATE_74_80_SYSTEMS = [
+  { update: "Update 74", title: "Player Retention + Better Progression", emoji: "🎯", text: "Beginner journey, milestone goals, 30-day calendar and clearer daily progression." },
+  { update: "Update 75", title: "Boss Expansion + Guild Contribution", emoji: "🐲", text: "Multiple rotating world bosses, guild contribution scoring and better boss reward previews." },
+  { update: "Update 76", title: "Better Inventory + Crafting Polish", emoji: "🎒", text: "Auto-equip best gear, gear compare, lock items and sell all by rarity." },
+  { update: "Update 77", title: "Real Art / Icons Pack", emoji: "🎨", text: "Premium fantasy icon pack, city skin previews, zone art cards and launch-ready branding." },
+  { update: "Update 78", title: "Beta Balance Fixes", emoji: "⚖️", text: "Safer progression defaults, raid caps, marketplace guardrails and economy audit presets." },
+  { update: "Update 79", title: "Server-Side Hardening v2", emoji: "🔐", text: "Additional server validation checklist, suspicious action logs and admin hardening summary." },
+  { update: "Update 80", title: "Public Beta Launch", emoji: "🚀", text: "Public beta landing state, launch checklist, beta code, player onboarding and release readiness tools." }
+];
+
+const LOGIN_CALENDAR_30 = Array.from({ length: 30 }, (_, i) => {
+  const day = i + 1;
+  const reward = day === 30 ? { gold: 15000, wood: 9000, crystals: 650, diamonds: 120, sCoins: 5 }
+    : day === 21 ? { gold: 9000, wood: 5500, diamonds: 80, sCoins: 2 }
+    : day === 14 ? { gold: 5500, crystals: 320, diamonds: 55 }
+    : day === 7 ? { gold: 3000, wood: 2200, crystals: 160, diamonds: 30 }
+    : day % 5 === 0 ? { gold: 1800 + day * 80, diamonds: 10 + Math.floor(day / 5) * 5 }
+    : day % 3 === 0 ? { crystals: 55 + day * 3, xp: 120 + day * 10 }
+    : day % 2 === 0 ? { wood: 650 + day * 70, xp: 70 + day * 8 }
+    : { gold: 750 + day * 90, xp: 70 + day * 8 };
+  return { day, reward };
+});
+
+const BEGINNER_JOURNEY_STEPS = [
+  { id: "citadel_2", title: "Upgrade Citadel to Level 2", text: "Start your kingdom by strengthening the Citadel.", reward: { gold: 600, wood: 350, xp: 90 }, check: (game) => (game.buildings?.citadel?.level || 1) >= 2 },
+  { id: "three_wins", title: "Win 3 Battles", text: "Prove your hero can survive early fights.", reward: { gold: 800, crystals: 45, xp: 120 }, check: (game) => (game.stats?.wins || 0) >= 3 },
+  { id: "equip_item", title: "Equip Your First Item", text: "Open Inventory and equip a weapon, armor, ring or amulet.", reward: { diamonds: 12, xp: 120 }, check: (game) => Object.values(game.equipment || {}).some(Boolean) },
+  { id: "join_guild", title: "Join or Create an Alliance", text: "Alliances protect you and unlock group progression.", reward: { gold: 1300, wood: 900, crystals: 80 }, check: (game) => Boolean(game.guild?.id || game.guild?.name) },
+  { id: "boss_kill", title: "Defeat a Dungeon Boss", text: "Clear a zone boss in World.", reward: { diamonds: 25, xp: 240 }, check: (game) => (game.stats?.bossKills || 0) >= 1 },
+  { id: "train_paladin", title: "Train the Paladin", text: "Upgrade your Paladin companion at least once.", reward: { gold: 1500, crystals: 100, xp: 180 }, check: (game) => (game.paladin?.level || 1) >= 2 },
+  { id: "claim_daily", title: "Claim a Daily Reward", text: "Start your retention streak.", reward: { diamonds: 18, xp: 100 }, check: (game) => Boolean(game.daily?.login?.lastClaimedDate) }
+];
+
+const BATTLE_PASS_80_REWARDS = Array.from({ length: 50 }, (_, i) => {
+  const tier = i + 1;
+  const points = tier * 100;
+  const freeReward = tier % 10 === 0 ? { diamonds: 35 + tier, gold: 1200 * tier }
+    : tier % 5 === 0 ? { crystals: 90 + tier * 4, diamonds: 10 }
+    : tier % 3 === 0 ? { wood: 800 + tier * 45, xp: 80 + tier * 8 }
+    : { gold: 700 + tier * 60, xp: 60 + tier * 6 };
+  const premiumReward = tier % 10 === 0 ? { diamonds: 80 + tier, sCoins: 1, crystals: 150 + tier * 8 }
+    : tier % 5 === 0 ? { diamonds: 25 + tier, crystals: 120 + tier * 5 }
+    : { gold: 1300 + tier * 95, diamonds: 5 };
+  return { tier, points, freeReward, premiumReward };
+});
+
+const EXPANDED_WORLD_BOSSES = [
+  { id: "goblin_king", name: "Goblin King", emoji: "🧌", req: 1, hp: 120000, reward: "Gold, wood and early gear chests." },
+  { id: "ancient_hydra", name: "Ancient Hydra", emoji: "🐍", req: 20, hp: 350000, reward: "Crystals, diamonds and guild contribution." },
+  { id: "dragon_lord", name: "Dragon Lord", emoji: "🐉", req: 45, hp: 750000, reward: "Epic/Legendary gear chance and S-Coin vouchers." },
+  { id: "shadow_titan", name: "Shadow Titan", emoji: "🌑", req: 75, hp: 1200000, reward: "High damage leaderboard rewards and premium materials." },
+  { id: "infernal_emperor", name: "Infernal Emperor", emoji: "🔥", req: 100, hp: 2500000, reward: "Endgame diamonds, guild ranking points and rare cosmetics." }
+];
+
+const UPDATE_80_BALANCE_DEFAULTS = {
+  version: 80,
+  xpMultiplier: 0.78,
+  resourceMultiplier: 0.9,
+  dropChanceSoftCap: 0.62,
+  raidStealCapPercent: 18,
+  diamondStealCapPercent: 2,
+  marketplaceTaxPercent: 6,
+  pvpSameTargetCooldownHours: 3,
+  cityAttackEnergyCost: 5,
+  worldBossEnergyCost: 3,
+  inventoryLimit: 90,
+  notes: "Update 80 public beta defaults focus on slower progression, cleaner raids and safer marketplace rules."
+};
+
+const PUBLIC_BETA_RULES_80 = [
+  "S-Coins are manual/admin granted only.",
+  "Same-alliance city attacks are blocked.",
+  "Bug abuse, save manipulation and marketplace exploits can lead to rollback.",
+  "Balance may change during public beta.",
+  "Use Report Bug or Feedback for issues before requesting compensation."
+];
+
 const GAME_MENU_GROUPS = [
   { id: "main", label: "Main Game", emoji: "🏰", tabs: [
     ["city", "City"], ["world", "World"], ["battle", "Battle"], ["hero", "Hero"], ["inventory", "Inventory"], ["companions", "Companions"]
   ]},
   { id: "multiplayer", label: "Multiplayer", emoji: "🏆", tabs: [
-    ["arena", "Arena"], ["guild", "Guild"], ["guildWars", "Guild Wars"], ["worldBoss", "World Boss"], ["chat", "Chat"], ["directMessages", "Messages"]
+    ["arena", "Arena"], ["guild", "Guild"], ["guildWars", "Guild Wars"], ["worldBoss", "World Boss"], ["bossExpansion75", "Bosses"], ["chat", "Chat"], ["directMessages", "Messages"]
   ]},
   { id: "economy", label: "Economy", emoji: "🛒", tabs: [
-    ["shop", "Shop"], ["trade", "Market"], ["blacksmith", "Blacksmith"], ["daily", "Daily"], ["coinRequests", "S-Coin Requests"]
+    ["shop", "Shop"], ["trade", "Market"], ["blacksmith", "Blacksmith"], ["inventoryPolish76", "Inventory+"], ["daily", "Daily"], ["coinRequests", "S-Coin Requests"]
   ]},
   { id: "progress", label: "Progress", emoji: "⭐", tabs: [
-    ["campaign", "Campaign"], ["season", "Season"], ["progress", "VIP"], ["quests", "Quests"], ["tutorialFlow", "Guide"], ["launch73", "Launch"]
+    ["journey74", "Journey"], ["calendar74", "30-Day"], ["battlePass80", "Pass 80"], ["campaign", "Campaign"], ["season", "Season"], ["progress", "VIP"], ["quests", "Quests"], ["tutorialFlow", "Guide"], ["launch73", "Launch"]
   ]},
   { id: "systems", label: "System", emoji: "⚙️", tabs: [
-    ["inbox", "Inbox"], ["notifications", "Alerts"], ["changelog", "Changelog"], ["reportBug", "Report Bug"], ["feedback73", "Feedback"], ["sound", "Sound"], ["update73", "Update 73"]
+    ["inbox", "Inbox"], ["notifications", "Alerts"], ["changelog", "Changelog"], ["reportBug", "Report Bug"], ["feedback73", "Feedback"], ["sound", "Sound"], ["publicBeta80", "Beta 80"], ["update80", "Update 80"], ["update73", "Update 73"]
   ]},
   { id: "admin", label: "Admin", emoji: "🧰", adminOnly: true, tabs: [
-    ["admin", "Admin"], ["adminPlus", "Admin+"], ["security", "Security"], ["balance52", "Balance"], ["economy73", "Economy V73"], ["monetization72", "S-Coin Admin"], ["bugTracker", "Bug Tracker"], ["performance", "Optimize"]
+    ["admin", "Admin"], ["adminPlus", "Admin+"], ["security", "Security"], ["balance52", "Balance"], ["betaBalance78", "Balance 78"], ["serverHardening79", "Hardening v2"], ["economy73", "Economy V73"], ["monetization72", "S-Coin Admin"], ["bugTracker", "Bug Tracker"], ["performance", "Optimize"]
   ]}
 ];
 
@@ -504,7 +583,7 @@ const DAILY_QUESTS = [
 
 function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
   return {
-    version: 60,
+    version: 80,
     playerName,
     className,
     level: 1,
@@ -530,6 +609,17 @@ function createStarterGame(playerName = "Lord S-Fleet", className = "Knight") {
       artPack: "royal_clean",
       economyHardening: { marketplaceCapsApplied: false, lastAuditAt: null, safeMode: true },
       betaLaunchV1: { ready: false, publicLandingReviewed: false }
+    },
+    update80: {
+      beginnerJourney: { claimed: [] },
+      loginCalendar: { claimedDays: [], lastClaimedDate: null },
+      battlePass: { points: 0, claimedFree: [], claimedPremium: [], premium: false },
+      bossExpansion: { activeBossId: "goblin_king", totalContribution: 0, guildContribution: 0, defeated: [] },
+      inventoryPolish: { lastAutoEquipAt: null, lockedItems: [] },
+      artPack: { selected: "royal_beta", unlocked: ["royal_beta"] },
+      balanceFixes: { applied: false, config: UPDATE_80_BALANCE_DEFAULTS },
+      serverHardening: { checklist: [], logs: [], safeMode: true },
+      publicBeta: { rulesAccepted: false, launchReady: false, betaCode: "SFW-BETA-80" }
     },
     daily: {
       date: todayKey(),
@@ -688,7 +778,7 @@ function claimDailyQuestReward(game, questId) {
 function normalizeGame(game) {
   if (!game || typeof game !== "object") return null;
   const next = clone(game);
-  next.version = 73;
+  next.version = 80;
   if (!CLASSES[next.className]) next.className = "Knight";
   next.playerName = typeof next.playerName === "string" && next.playerName.trim() ? next.playerName.trim() : "Lord S-Fleet";
   next.resources = { gold: 0, wood: 0, crystals: 0, diamonds: 0, sCoins: 0, energy: 10, ...(next.resources || {}) };
@@ -768,6 +858,43 @@ function normalizeGame(game) {
   next.update73.sCoinRequestsLocal = Array.isArray(next.update73.sCoinRequestsLocal) ? next.update73.sCoinRequestsLocal.slice(0, 80) : [];
   next.update73.economyHardening = { marketplaceCapsApplied: false, lastAuditAt: null, safeMode: true, ...(next.update73.economyHardening || {}) };
   next.update73.betaLaunchV1 = { ready: false, publicLandingReviewed: false, ...(next.update73.betaLaunchV1 || {}) };
+
+  next.update80 = {
+    beginnerJourney: { claimed: [] },
+    loginCalendar: { claimedDays: [], lastClaimedDate: null },
+    battlePass: { points: 0, claimedFree: [], claimedPremium: [], premium: false },
+    bossExpansion: { activeBossId: "goblin_king", totalContribution: 0, guildContribution: 0, defeated: [] },
+    inventoryPolish: { lastAutoEquipAt: null, lockedItems: [] },
+    artPack: { selected: "royal_beta", unlocked: ["royal_beta"] },
+    balanceFixes: { applied: false, config: UPDATE_80_BALANCE_DEFAULTS },
+    serverHardening: { checklist: [], logs: [], safeMode: true },
+    publicBeta: { rulesAccepted: false, launchReady: false, betaCode: "SFW-BETA-80" },
+    ...(next.update80 || {})
+  };
+  next.update80.beginnerJourney = { claimed: [], ...(next.update80.beginnerJourney || {}) };
+  next.update80.beginnerJourney.claimed = Array.isArray(next.update80.beginnerJourney.claimed) ? next.update80.beginnerJourney.claimed : [];
+  next.update80.loginCalendar = { claimedDays: [], lastClaimedDate: null, ...(next.update80.loginCalendar || {}) };
+  next.update80.loginCalendar.claimedDays = Array.isArray(next.update80.loginCalendar.claimedDays) ? next.update80.loginCalendar.claimedDays : [];
+  next.update80.battlePass = { points: 0, claimedFree: [], claimedPremium: [], premium: false, ...(next.update80.battlePass || {}) };
+  next.update80.battlePass.points = Math.max(0, Math.floor(Number(next.update80.battlePass.points) || 0));
+  next.update80.battlePass.claimedFree = Array.isArray(next.update80.battlePass.claimedFree) ? next.update80.battlePass.claimedFree : [];
+  next.update80.battlePass.claimedPremium = Array.isArray(next.update80.battlePass.claimedPremium) ? next.update80.battlePass.claimedPremium : [];
+  next.update80.bossExpansion = { activeBossId: "goblin_king", totalContribution: 0, guildContribution: 0, defeated: [], ...(next.update80.bossExpansion || {}) };
+  next.update80.bossExpansion.totalContribution = Math.max(0, Math.floor(Number(next.update80.bossExpansion.totalContribution) || 0));
+  next.update80.bossExpansion.guildContribution = Math.max(0, Math.floor(Number(next.update80.bossExpansion.guildContribution) || 0));
+  next.update80.bossExpansion.defeated = Array.isArray(next.update80.bossExpansion.defeated) ? next.update80.bossExpansion.defeated : [];
+  if (!EXPANDED_WORLD_BOSSES.some((boss) => boss.id === next.update80.bossExpansion.activeBossId)) next.update80.bossExpansion.activeBossId = "goblin_king";
+  next.update80.inventoryPolish = { lastAutoEquipAt: null, lockedItems: [], ...(next.update80.inventoryPolish || {}) };
+  next.update80.inventoryPolish.lockedItems = Array.isArray(next.update80.inventoryPolish.lockedItems) ? next.update80.inventoryPolish.lockedItems : [];
+  next.update80.artPack = { selected: "royal_beta", unlocked: ["royal_beta"], ...(next.update80.artPack || {}) };
+  next.update80.artPack.unlocked = Array.isArray(next.update80.artPack.unlocked) && next.update80.artPack.unlocked.length ? next.update80.artPack.unlocked : ["royal_beta"];
+  next.update80.balanceFixes = { applied: false, config: UPDATE_80_BALANCE_DEFAULTS, ...(next.update80.balanceFixes || {}) };
+  next.update80.balanceFixes.config = { ...UPDATE_80_BALANCE_DEFAULTS, ...(next.update80.balanceFixes.config || {}) };
+  next.update80.serverHardening = { checklist: [], logs: [], safeMode: true, ...(next.update80.serverHardening || {}) };
+  next.update80.serverHardening.checklist = Array.isArray(next.update80.serverHardening.checklist) ? next.update80.serverHardening.checklist : [];
+  next.update80.serverHardening.logs = Array.isArray(next.update80.serverHardening.logs) ? next.update80.serverHardening.logs.slice(0, 80) : [];
+  next.update80.publicBeta = { rulesAccepted: false, launchReady: false, betaCode: "SFW-BETA-80", ...(next.update80.publicBeta || {}) };
+
   next.debugReports = Array.isArray(next.debugReports) ? next.debugReports.slice(0, 40) : [];
   next.bugReportsLocal = Array.isArray(next.bugReportsLocal) ? next.bugReportsLocal.slice(0, 40) : [];
   next.directMessages = Array.isArray(next.directMessages) ? next.directMessages.slice(0, 80) : [];
@@ -5226,6 +5353,7 @@ function Update41To50Panel({ game, setGame, session, isAdmin }) {
 
 const CHANGELOG_51 = [
   { update: "Update 73", title: "Server-Side Economy Hardening", text: "Added production cleanup, art pack polish, beta launch v1, surveys, S-Coin admin flow and economy hardening controls." },
+  { update: "Update 80", title: "Public Beta Launch", text: "Added player retention systems, 30-day login calendar, improved pass, boss expansion, inventory polish, hardening v2 and public beta launch tools." },
   { update: "Update 72", title: "S-Coin Monetization Admin Flow", text: "Added manual S-Coin package requests, admin review helpers and premium economy transparency." },
   { update: "Update 71", title: "Feedback System + Player Survey", text: "Added player feedback surveys, tester notes and optional Supabase submission flow." },
   { update: "Update 70", title: "Beta Launch v1", text: "Added launch readiness screen, starter pack and public rules flow for beta players." },
@@ -6235,6 +6363,139 @@ function Update68To73Panel({ game, setGame, session, isAdmin }) {
   );
 }
 
+
+
+function Update74To80Panel({ game, setGame, session, isAdmin }) {
+  const readiness = [
+    game.update80?.publicBeta?.rulesAccepted,
+    game.update80?.balanceFixes?.applied,
+    (game.update80?.beginnerJourney?.claimed || []).length >= 3,
+    (game.update80?.battlePass?.points || 0) >= 300,
+    Boolean(game.guild?.id || game.guild?.name),
+    game.update80?.serverHardening?.safeMode
+  ].filter(Boolean).length;
+  return (
+    <section className="grid two">
+      <div className="panel launch-panel">
+        <div className="badge">Update 80 · Public Beta Launch</div>
+        <h2>Update 74–80 Bundle</h2>
+        <p>Retention, boss expansion, inventory polish, balance fixes, server hardening v2 and public beta launch readiness.</p>
+        <div className="grid two mini-stats">
+          <div>🎯 Journey <b>{(game.update80?.beginnerJourney?.claimed || []).length}/{BEGINNER_JOURNEY_STEPS.length}</b></div>
+          <div>🎟️ Pass Points <b>{game.update80?.battlePass?.points || 0}</b></div>
+          <div>🐲 Boss Contribution <b>{game.update80?.bossExpansion?.totalContribution || 0}</b></div>
+          <div>🚀 Readiness <b>{readiness}/6</b></div>
+        </div>
+        <div className="actions"><button className="primary" onClick={() => setGame((prev) => { const next = normalizeGame(prev); next.update80.publicBeta.launchReady = readiness >= 4; addMail(next, "Update 80 readiness checked", `Public beta readiness score: ${readiness}/6.`, "system"); return next; })}>Check beta readiness</button><button onClick={() => downloadJson("s-fleet-update80-debug.json", buildDebugPayload(game, { tabHint: "update80", readiness }))}>Export Update 80 debug</button></div>
+      </div>
+      <div className="panel">
+        <h2>Update Roadmap Delivered</h2>
+        <div className="update-grid">
+          {UPDATE_74_80_SYSTEMS.map((item) => <article className="update-card" key={item.update}><b>{item.emoji} {item.update}</b><h3>{item.title}</h3><p>{item.text}</p></article>)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BeginnerJourneyPanel({ game, setGame }) {
+  function claimStep(step) {
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      if ((next.update80.beginnerJourney.claimed || []).includes(step.id) || !step.check(next)) return prev;
+      next = applyReward(next, step.reward);
+      next.update80.beginnerJourney.claimed.push(step.id);
+      next.update80.battlePass.points += 60;
+      addMail(next, "Beginner Journey completed", `${step.title}: ${rewardText(step.reward)}.`, "progress");
+      return next;
+    });
+  }
+  return (
+    <section className="panel">
+      <div className="section-title"><div><div className="badge">Update 74 · Player Journey</div><h2>Beginner Journey</h2><p>Clear these goals to understand the game and claim rewards.</p></div><div className="power-summary">{(game.update80?.beginnerJourney?.claimed || []).length}/{BEGINNER_JOURNEY_STEPS.length} completed</div></div>
+      <div className="grid three">
+        {BEGINNER_JOURNEY_STEPS.map((step) => { const done = (game.update80?.beginnerJourney?.claimed || []).includes(step.id); const ready = step.check(game); return <article className="panel quest compact-panel" key={step.id}><h3>{done ? "✅" : ready ? "🟡" : "⚪"} {step.title}</h3><p>{step.text}</p><small>Reward: {rewardText(step.reward)}</small><button className="primary" disabled={!ready || done} onClick={() => claimStep(step)}>{done ? "Claimed" : ready ? "Claim reward" : "Locked"}</button></article>; })}
+      </div>
+    </section>
+  );
+}
+
+function LoginCalendar30Panel({ game, setGame }) {
+  const claimed = game.update80?.loginCalendar?.claimedDays || [];
+  const alreadyToday = game.update80?.loginCalendar?.lastClaimedDate === todayKey();
+  const nextDay = Math.min(30, claimed.length + 1);
+  function claimDay(day) {
+    setGame((prev) => {
+      let next = normalizeGame(prev);
+      if (next.update80.loginCalendar.lastClaimedDate === todayKey()) return prev;
+      if (day !== next.update80.loginCalendar.claimedDays.length + 1) return prev;
+      const entry = LOGIN_CALENDAR_30.find((item) => item.day === day);
+      next = applyReward(next, entry.reward);
+      next.update80.loginCalendar.claimedDays.push(day);
+      next.update80.loginCalendar.lastClaimedDate = todayKey();
+      next.update80.battlePass.points += 35;
+      addMail(next, "30-Day Calendar reward", `Day ${day}: ${rewardText(entry.reward)}.`, "daily");
+      return next;
+    });
+  }
+  return (
+    <section className="panel">
+      <div className="section-title"><div><div className="badge">Update 74 · 30-Day Calendar</div><h2>Login Calendar</h2><p>Claim one calendar reward per day. Day 30 contains a public beta launch reward.</p></div><button className="primary" disabled={alreadyToday || nextDay > 30} onClick={() => claimDay(nextDay)}>{alreadyToday ? "Claimed today" : `Claim Day ${nextDay}`}</button></div>
+      <div className="calendar-grid">
+        {LOGIN_CALENDAR_30.map((entry) => <div key={entry.day} className={`calendar-day ${claimed.includes(entry.day) ? "claimed" : entry.day === nextDay ? "next" : ""}`}><b>Day {entry.day}</b><span>{rewardText(entry.reward)}</span></div>)}
+      </div>
+    </section>
+  );
+}
+
+function ImprovedBattlePass80Panel({ game, setGame }) {
+  const pass = game.update80?.battlePass || { points: 0, claimedFree: [], claimedPremium: [] };
+  function syncPoints() {
+    setGame((prev) => { const next = normalizeGame(prev); const earned = Math.min(2500, (next.stats.wins || 0) * 12 + (next.stats.dungeonWins || 0) * 35 + (next.stats.bossKills || 0) * 90 + (next.stats.pvpWins || 0) * 55); next.update80.battlePass.points = Math.max(next.update80.battlePass.points, earned); addMail(next, "Battle Pass synced", `Season points synced to ${next.update80.battlePass.points}.`, "season"); return next; });
+  }
+  function claimTier(tier, premium = false) {
+    setGame((prev) => { let next = normalizeGame(prev); const entry = BATTLE_PASS_80_REWARDS.find((r) => r.tier === tier); if (!entry || next.update80.battlePass.points < entry.points) return prev; const key = premium ? "claimedPremium" : "claimedFree"; if ((next.update80.battlePass[key] || []).includes(tier)) return prev; if (premium && !next.update80.battlePass.premium) return prev; next = applyReward(next, premium ? entry.premiumReward : entry.freeReward); next.update80.battlePass[key].push(tier); addMail(next, "Battle Pass reward", `Tier ${tier} ${premium ? "Premium" : "Free"}: ${rewardText(premium ? entry.premiumReward : entry.freeReward)}.`, "season"); return next; });
+  }
+  function unlockPremium() {
+    setGame((prev) => { const next = normalizeGame(prev); if (next.update80.battlePass.premium || next.resources.sCoins < 15) return prev; next.resources.sCoins -= 15; next.update80.battlePass.premium = true; addMail(next, "Premium Battle Pass unlocked", "You unlocked the Update 80 premium pass.", "season"); return next; });
+  }
+  return <section className="panel"><div className="section-title"><div><div className="badge">Update 74 · Improved Battle Pass</div><h2>Battle Pass 80</h2><p>Free and premium rewards up to tier 50.</p></div><div className="actions"><button onClick={syncPoints}>Sync activity points</button><button className="primary" disabled={pass.premium || game.resources.sCoins < 15} onClick={unlockPremium}>{pass.premium ? "Premium active" : "Unlock Premium · 15 S-Coins"}</button></div></div><div className="pass-track">{BATTLE_PASS_80_REWARDS.map((tier) => <article className="pass-tier" key={tier.tier}><b>Tier {tier.tier}</b><span>{tier.points} pts</span><small>Free: {rewardText(tier.freeReward)}</small><button disabled={pass.points < tier.points || (pass.claimedFree || []).includes(tier.tier)} onClick={() => claimTier(tier.tier, false)}>{(pass.claimedFree || []).includes(tier.tier) ? "Claimed" : "Claim Free"}</button><small>Premium: {rewardText(tier.premiumReward)}</small><button disabled={!pass.premium || pass.points < tier.points || (pass.claimedPremium || []).includes(tier.tier)} onClick={() => claimTier(tier.tier, true)}>{(pass.claimedPremium || []).includes(tier.tier) ? "Claimed" : "Claim Premium"}</button></article>)}</div></section>;
+}
+
+function BossExpansion75Panel({ game, setGame }) {
+  const active = EXPANDED_WORLD_BOSSES.find((boss) => boss.id === game.update80?.bossExpansion?.activeBossId) || EXPANDED_WORLD_BOSSES[0];
+  function setBoss(id) { setGame((prev) => { const next = normalizeGame(prev); next.update80.bossExpansion.activeBossId = id; addMail(next, "World Boss target changed", `Active target set to ${EXPANDED_WORLD_BOSSES.find((b) => b.id === id)?.name}.`, "boss"); return next; }); }
+  function addContribution() { setGame((prev) => { let next = normalizeGame(prev); const stats = getHeroStats(next); const damage = Math.max(100, Math.round(stats.power * (0.025 + Math.random() * 0.035))); next.update80.bossExpansion.totalContribution += damage; if (next.guild?.id || next.guild?.name) next.update80.bossExpansion.guildContribution += damage; next.update80.battlePass.points += 45; if (damage > active.hp * 0.015 && !next.update80.bossExpansion.defeated.includes(active.id)) { next.update80.bossExpansion.defeated.push(active.id); next = applyReward(next, { diamonds: 20, crystals: 150, xp: 250 }); } addMail(next, "Boss contribution recorded", `${active.name}: ${damage} damage contribution.`, "boss"); return next; }); }
+  return <section className="grid two"><div className="panel boss-stage"><div className="badge">Update 75 · Boss Expansion</div><h2>{active.emoji} {active.name}</h2><p>Required level: {active.req}+ · HP preview: {active.hp.toLocaleString()}</p><p>{active.reward}</p><div className="grid two mini-stats"><div>Total Contribution <b>{game.update80?.bossExpansion?.totalContribution || 0}</b></div><div>Guild Contribution <b>{game.update80?.bossExpansion?.guildContribution || 0}</b></div></div><button className="primary big" onClick={addContribution}>Record boss contribution</button></div><div className="panel"><h2>Boss Rotation</h2><div className="grid one">{EXPANDED_WORLD_BOSSES.map((boss) => <button key={boss.id} className={active.id === boss.id ? "class-card active" : "class-card"} onClick={() => setBoss(boss.id)}><span className="class-emoji">{boss.emoji}</span><span><b>{boss.name}</b><small>Level {boss.req}+ · {boss.reward}</small></span></button>)}</div></div></section>;
+}
+
+function itemScore(item) { return (item?.displayPower || item?.power || 0) + (item?.upgrade || 0) * 80 + (item?.gems?.length || 0) * 120; }
+
+function InventoryPolish76Panel({ game, setGame }) {
+  const locked = new Set(game.update80?.inventoryPolish?.lockedItems || []);
+  function autoEquipBest() { setGame((prev) => { const next = normalizeGame(prev); Object.keys(SLOTS).forEach((slot) => { const candidates = [...next.inventory.filter((i) => i.slot === slot), next.equipment[slot]].filter(Boolean); const best = candidates.sort((a, b) => itemScore(b) - itemScore(a))[0]; if (best && next.equipment[slot]?.id !== best.id) { next.inventory = next.inventory.filter((i) => i.id !== best.id); if (next.equipment[slot]) next.inventory.push(next.equipment[slot]); next.equipment[slot] = best; } }); next.update80.inventoryPolish.lastAutoEquipAt = new Date().toISOString(); addMail(next, "Auto-equip completed", "Best gear was equipped for each slot.", "inventory"); return next; }); }
+  function toggleLock(itemId) { setGame((prev) => { const next = normalizeGame(prev); const list = new Set(next.update80.inventoryPolish.lockedItems || []); list.has(itemId) ? list.delete(itemId) : list.add(itemId); next.update80.inventoryPolish.lockedItems = Array.from(list); return next; }); }
+  function sellByRarity(rarity) { setGame((prev) => { const next = normalizeGame(prev); const lockedSet = new Set(next.update80.inventoryPolish.lockedItems || []); let gold = 0; next.inventory = next.inventory.filter((item) => { const sell = item.rarity === rarity && !lockedSet.has(item.id); if (sell) gold += item.value || 0; return !sell; }); next.resources.gold += gold; next.update80.battlePass.points += Math.min(150, Math.floor(gold / 250)); addMail(next, "Inventory sold by rarity", `Sold ${rarity} items for ${gold} gold.`, "inventory"); return next; }); }
+  return <section className="grid two"><div className="panel"><div className="badge">Update 76 · Inventory Polish</div><h2>Smart Inventory Tools</h2><p>Auto-equip, lock items and sell all by rarity.</p><div className="actions"><button className="primary" onClick={autoEquipBest}>Auto-equip best gear</button>{Object.keys(RARITIES).map((rarity) => <button key={rarity} onClick={() => sellByRarity(rarity)}>Sell all {rarity}</button>)}</div></div><div className="panel"><h2>Inventory Compare</h2><div className="inventory-list">{game.inventory.slice().sort((a,b)=>itemScore(b)-itemScore(a)).slice(0,20).map((item) => { const equipped = game.equipment?.[item.slot]; const diff = itemScore(item) - itemScore(equipped); return <article key={item.id} className={`item-card rarity-${item.rarity}`}><div className="item-head"><span className="item-icon">{SLOTS[item.slot]?.emoji}</span><div><h3>{locked.has(item.id) ? "🔒 " : ""}{item.name}</h3><p>{item.rarity} · {SLOTS[item.slot]?.label} · Score {itemScore(item)}</p></div></div><div className="item-stats">Compared to equipped: {diff >= 0 ? "+" : ""}{diff} score</div><button onClick={() => toggleLock(item.id)}>{locked.has(item.id) ? "Unlock" : "Lock"}</button></article>; })}</div></div></section>;
+}
+
+function BetaBalance78Panel({ game, setGame, isAdmin }) {
+  function applyBalance() { setGame((prev) => { const next = normalizeGame(prev); next.update80.balanceFixes.applied = true; next.update80.balanceFixes.config = UPDATE_80_BALANCE_DEFAULTS; next.marketRules.taxPercent = UPDATE_80_BALANCE_DEFAULTS.marketplaceTaxPercent; next.marketRules.maxListings = 18; next.securityLogs.unshift({ at: new Date().toISOString(), type: "balance78", message: "Update 78/80 balance defaults applied." }); addMail(next, "Balance fixes applied", "Update 80 balance defaults were applied to your save.", "system"); return next; }); }
+  return <section className="panel"><div className="badge">Update 78 · Beta Balance Fixes</div><h2>Balance Defaults</h2><p>Use these defaults before public beta testing.</p><pre className="code-block">{JSON.stringify(UPDATE_80_BALANCE_DEFAULTS, null, 2)}</pre><button className="primary" onClick={applyBalance} disabled={game.update80?.balanceFixes?.applied}>Apply Update 80 balance defaults</button></section>;
+}
+
+function ServerHardening79Panel({ game, setGame, session, isAdmin }) {
+  const checks = ["S-Coin admin-only grants", "Marketplace caps", "Raid S-Coin protection", "Same-guild attack block", "Energy validation", "City shield validation", "Bug tracker enabled", "Balance config logged"];
+  function toggleCheck(check) { setGame((prev) => { const next = normalizeGame(prev); const set = new Set(next.update80.serverHardening.checklist || []); set.has(check) ? set.delete(check) : set.add(check); next.update80.serverHardening.checklist = Array.from(set); next.update80.serverHardening.logs.unshift({ at: new Date().toISOString(), check, status: set.has(check) ? "enabled" : "removed" }); return next; }); }
+  return <section className="panel"><div className="badge">Update 79 · Server-Side Hardening v2</div><h2>Hardening Checklist</h2><p>This panel tracks production checks before wider beta access.</p><div className="checklist-grid">{checks.map((check) => <button key={check} className={(game.update80?.serverHardening?.checklist || []).includes(check) ? "check active" : "check"} onClick={() => toggleCheck(check)}>{(game.update80?.serverHardening?.checklist || []).includes(check) ? "✅" : "⬜"} {check}</button>)}</div><div className="battle-log">{(game.update80?.serverHardening?.logs || []).slice(0,8).map((log, i) => <div key={i}>{formatDateTime(log.at)} · {log.check} · {log.status}</div>)}</div></section>;
+}
+
+function PublicBeta80Panel({ game, setGame }) {
+  function acceptRules() { setGame((prev) => { const next = normalizeGame(prev); next.update80.publicBeta.rulesAccepted = true; addMail(next, "Public Beta rules accepted", "You accepted the Update 80 public beta rules.", "system"); return next; }); }
+  function markReady() { setGame((prev) => { const next = normalizeGame(prev); next.update80.publicBeta.launchReady = true; addMail(next, "Public Beta ready", "This account is marked ready for Public Beta Launch.", "system"); return next; }); }
+  return <section className="grid two"><div className="panel launch-panel"><div className="badge">Update 80 · Public Beta Launch</div><h2>S-Fleet Fantasy War</h2><p>Build your citadel. Train your hero. Join an alliance. Conquer cities.</p><div className="hero-cta"><button className="primary" onClick={acceptRules} disabled={game.update80?.publicBeta?.rulesAccepted}>Accept Beta Rules</button><button onClick={markReady} disabled={!game.update80?.publicBeta?.rulesAccepted}>Mark account beta ready</button></div><div className="notice">Beta Code: <b>{game.update80?.publicBeta?.betaCode || "SFW-BETA-80"}</b></div></div><div className="panel"><h2>Public Beta Rules</h2><ol className="rules-list">{PUBLIC_BETA_RULES_80.map((rule) => <li key={rule}>{rule}</li>)}</ol></div></section>;
+}
+
 function Game({ session }) {
   const [game, setGame] = useState(null);
   const [tab, setTab] = useState("city");
@@ -6382,6 +6643,7 @@ function Game({ session }) {
           <button className={tab === "arena" ? "active" : ""} onClick={() => setTab("arena")}>🏆 Arena</button>
           <button className={tab === "guild" ? "active" : ""} onClick={() => setTab("guild")}>🛡️ Guild</button>
           <button className={tab === "update67" ? "active" : ""} onClick={() => setTab("update67")}>🧪 Update 67</button>
+          <button className={tab === "update80" ? "active" : ""} onClick={() => setTab("update80")}>🚀 Update 80</button>
           <button className={tab === "update73" ? "active" : ""} onClick={() => setTab("update73")}>🔐 Update 73</button>
           {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
         </nav>
@@ -6431,6 +6693,17 @@ function Game({ session }) {
       {tab === "scout" && <ScoutSystemPanel game={game} setGame={setGame} session={session} />}
       {tab === "betaLaunch" && <BetaLaunchPanel game={game} setGame={setGame} />}
       {tab === "balance52" && <BalancePassPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+
+      {tab === "journey74" && <BeginnerJourneyPanel game={game} setGame={setGame} />}
+      {tab === "calendar74" && <LoginCalendar30Panel game={game} setGame={setGame} />}
+      {tab === "battlePass80" && <ImprovedBattlePass80Panel game={game} setGame={setGame} />}
+      {tab === "bossExpansion75" && <BossExpansion75Panel game={game} setGame={setGame} />}
+      {tab === "inventoryPolish76" && <InventoryPolish76Panel game={game} setGame={setGame} />}
+      {tab === "betaBalance78" && isAdmin && <BetaBalance78Panel game={game} setGame={setGame} isAdmin={isAdmin} />}
+      {tab === "serverHardening79" && isAdmin && <ServerHardening79Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "publicBeta80" && <PublicBeta80Panel game={game} setGame={setGame} />}
+      {tab === "update80" && <Update74To80Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+
       {tab === "update67" && <Update61To67Panel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
       {tab === "launch73" && <LaunchPreparation73Panel game={game} setGame={setGame} session={session} />}
       {tab === "feedback73" && <FeedbackSurvey73Panel game={game} setGame={setGame} session={session} />}

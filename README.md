@@ -1,62 +1,38 @@
-# S-Fleet Fantasy War ⚔️ — Update 73
+# S-Fleet Fantasy War ⚔️ — Update 80
 
-This package contains **Update 68–73** on top of the existing beta build.
+Update 74–80 Bundle.
 
-## Current badge
+## Included
 
-```txt
-Update 73 · Server-Side Economy Hardening
-```
+- Update 74 · Player Retention + Better Progression
+- Update 75 · Boss Expansion + Guild Contribution
+- Update 76 · Better Inventory + Crafting Polish
+- Update 77 · Real Art / Icons Pack
+- Update 78 · Beta Balance Fixes
+- Update 79 · Server-Side Hardening v2
+- Update 80 · Public Beta Launch
 
-## Included updates
+## New tabs
 
-- **Update 68 · Real Production Cleanup + Launch Preparation**
-- **Update 69 · Real Art Pack + Icons**
-- **Update 70 · Beta Launch v1**
-- **Update 71 · Feedback System + Player Survey**
-- **Update 72 · S-Coin Monetization Admin Flow**
-- **Update 73 · Server-Side Economy Hardening**
-
-## What changed
-
-- cleaner launch panel
-- starter pack for new/beta players
-- beta rules acceptance
-- feedback/survey panel
-- manual S-Coin package request flow
-- admin economy hardening panel
-- marketplace safety caps
-- Update 73 changelog entries
-- Supabase SQL for feedback, S-Coin package requests and launch readiness logs
+- Journey
+- 30-Day
+- Pass 80
+- Bosses
+- Inventory+
+- Beta 80
+- Update 80
+- Admin: Balance 78 / Hardening v2
 
 ## Supabase
 
-Run the full file:
-
-```txt
-supabase/schema.sql
-```
-
-in:
-
-```txt
-Supabase → SQL Editor → New query → Run
-```
+Run `supabase/schema.sql` in Supabase SQL Editor.
 
 ## Netlify
 
-Same settings as before:
-
-```txt
-Build command: npm run build
-Publish directory: dist
-Base directory: empty
-Functions directory: empty
-```
+Build command: `npm run build`
+Publish directory: `dist`
 
 Environment variables remain:
 
-```txt
-VITE_SUPABASE_URL
-VITE_SUPABASE_ANON_KEY
-```
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`

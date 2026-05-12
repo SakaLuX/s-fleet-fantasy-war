@@ -2701,3 +2701,23 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Update 74-80 polish */
+.calendar-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.calendar-day { border: 1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.055); border-radius: 18px; padding: 14px; min-height: 92px; }
+.calendar-day b { display:block; color:#fde68a; margin-bottom:6px; }
+.calendar-day span { color:#cbd5e1; font-size: 13px; }
+.calendar-day.claimed { border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.10); }
+.calendar-day.next { border-color: rgba(251,191,36,.55); box-shadow: 0 0 0 2px rgba(251,191,36,.08) inset; }
+.pass-track { display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; max-height: 720px; overflow:auto; padding-right: 4px; }
+.pass-tier { border:1px solid rgba(255,255,255,.10); border-radius:20px; background:rgba(255,255,255,.05); padding:14px; display:grid; gap:8px; }
+.pass-tier b { color:#fde68a; }
+.pass-tier span, .pass-tier small { color:#cbd5e1; }
+.boss-stage { background: radial-gradient(circle at top left, rgba(251,191,36,.20), rgba(15,23,42,.76) 45%, rgba(2,6,23,.85)); }
+.checklist-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 14px 0; }
+.check { text-align:left; border:1px solid rgba(255,255,255,.10); border-radius:16px; background:rgba(255,255,255,.06); color:#e2e8f0; padding: 12px; }
+.check.active { border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.10); }
+.compact-panel { padding: 18px; }
+.code-block { white-space: pre-wrap; overflow:auto; max-height: 420px; border: 1px solid rgba(255,255,255,.10); border-radius: 18px; padding: 14px; background: rgba(2,6,23,.55); color: #dbeafe; }
+.hero-cta { display:flex; flex-wrap:wrap; gap:10px; margin: 18px 0; }

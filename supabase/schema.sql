@@ -2266,3 +2266,104 @@ as $$
 $$;
 
 grant execute on function public.admin_update73_summary() to authenticated;
+
+
+-- Update 80 · Public Beta Launch
+-- Safe additive schema for retention, beta launch, server hardening v2 and inventory audit logs.
+
+create table if not exists public.player_journey_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  step_id text not null,
+  reward jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.login_calendar_claims (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  claim_day int not null,
+  reward jsonb not null default '{}'::jsonb,
+  claim_date date not null default current_date,
+  created_at timestamptz not null default now(),
+  unique(user_id, claim_date)
+);
+
+create table if not exists public.battle_pass_80_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  tier int,
+  premium boolean not null default false,
+  reward jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.server_hardening_v2_logs (
+  id uuid primary key default gen_random_uuid(),
+  actor_email text,
+  action text not null,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.public_beta_launch_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  beta_code text not null default 'SFW-BETA-80',
+  rules_accepted boolean not null default false,
+  launch_ready boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(user_id)
+);
+
+alter table public.player_journey_logs enable row level security;
+alter table public.login_calendar_claims enable row level security;
+alter table public.battle_pass_80_logs enable row level security;
+alter table public.server_hardening_v2_logs enable row level security;
+alter table public.public_beta_launch_logs enable row level security;
+
+drop policy if exists "Players can read own journey logs" on public.player_journey_logs;
+create policy "Players can read own journey logs" on public.player_journey_logs for select to authenticated using (auth.uid() = user_id or public.is_admin_email(auth.email()));
+drop policy if exists "Players can insert own journey logs" on public.player_journey_logs;
+create policy "Players can insert own journey logs" on public.player_journey_logs for insert to authenticated with check (auth.uid() = user_id);
+
+drop policy if exists "Players can read own calendar claims" on public.login_calendar_claims;
+create policy "Players can read own calendar claims" on public.login_calendar_claims for select to authenticated using (auth.uid() = user_id or public.is_admin_email(auth.email()));
+drop policy if exists "Players can insert own calendar claims" on public.login_calendar_claims;
+create policy "Players can insert own calendar claims" on public.login_calendar_claims for insert to authenticated with check (auth.uid() = user_id);
+
+drop policy if exists "Players can read own battle pass logs" on public.battle_pass_80_logs;
+create policy "Players can read own battle pass logs" on public.battle_pass_80_logs for select to authenticated using (auth.uid() = user_id or public.is_admin_email(auth.email()));
+drop policy if exists "Players can insert own battle pass logs" on public.battle_pass_80_logs;
+create policy "Players can insert own battle pass logs" on public.battle_pass_80_logs for insert to authenticated with check (auth.uid() = user_id);
+
+drop policy if exists "Admins can read hardening v2 logs" on public.server_hardening_v2_logs;
+create policy "Admins can read hardening v2 logs" on public.server_hardening_v2_logs for select to authenticated using (public.is_admin_email(auth.email()));
+drop policy if exists "Admins can insert hardening v2 logs" on public.server_hardening_v2_logs;
+create policy "Admins can insert hardening v2 logs" on public.server_hardening_v2_logs for insert to authenticated with check (public.is_admin_email(auth.email()));
+
+drop policy if exists "Players can read own public beta logs" on public.public_beta_launch_logs;
+create policy "Players can read own public beta logs" on public.public_beta_launch_logs for select to authenticated using (auth.uid() = user_id or public.is_admin_email(auth.email()));
+drop policy if exists "Players can upsert own public beta logs" on public.public_beta_launch_logs;
+create policy "Players can upsert own public beta logs" on public.public_beta_launch_logs for all to authenticated using (auth.uid() = user_id or public.is_admin_email(auth.email())) with check (auth.uid() = user_id or public.is_admin_email(auth.email()));
+
+create or replace function public.admin_update80_summary()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'journey_logs', (select count(*) from public.player_journey_logs),
+    'calendar_claims', (select count(*) from public.login_calendar_claims),
+    'battle_pass_logs', (select count(*) from public.battle_pass_80_logs),
+    'hardening_logs', (select count(*) from public.server_hardening_v2_logs),
+    'public_beta_players', (select count(*) from public.public_beta_launch_logs),
+    'generated_at', now()
+  )
+  where public.is_admin_email(auth.email());
+$$;
+
+grant execute on function public.admin_update80_summary() to authenticated;
