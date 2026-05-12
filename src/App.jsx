@@ -8,6 +8,22 @@ const supabase = hasSupabase ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : n
 const MAX_CITADEL_LEVEL = 50;
 const MAX_HERO_LEVEL = 100;
 const MAX_PARAGON_LEVEL = 250;
+const GAME_VERSION_LABEL = "Update 52 · Real Game Balance Pass";
+
+const DEFAULT_BALANCE_V52 = {
+  configVersion: 52,
+  xp: { multiplier: 0.85, levelCurve: "soft-early / slower-paragon", earlyLevels: "1-20", midLevels: "20-50", lateLevels: "50-100", paragon: "100+" },
+  energyCosts: { normalBattle: 1, dungeon: 2, boss: 3, cityAttack: 5, worldBoss: 3 },
+  buildingCost: { earlyMultiplier: 1.0, midMultiplier: 1.28, lateMultiplier: 1.72, citadelLateMultiplier: 2.15 },
+  rewards: { goldMultiplier: 0.92, woodMultiplier: 0.95, crystalMultiplier: 0.9, diamondMultiplier: 0.8 },
+  drops: { baseBattleChance: 0.58, dungeonMultiplier: 0.9, bossBonus: 0.08, legendaryCapPercent: 4 },
+  marketplace: { minPrice: 25, maxPrice: 250000, taxPercent: 5, maxListings: 20 },
+  pvp: { sameTargetCooldownMinutes: 120, outgoingLimit: 5, sameGuildBlocked: true },
+  raid: { baseStealPercent: 4, wallBreakBonusPercent: 3, citadelBreakBonusPercent: 5, mineBreakBonusPercent: 4, lumberBreakBonusPercent: 4, diamondStealCapPercent: 2, sCoinsProtected: true },
+  shop: { energyPackSCoins: 2, classChangeSCoins: 10, renameSCoins: 2, premiumChestSCoins: 5 },
+  worldBoss: { energyCost: 3, dailySoftLimit: 25, rewardMultiplier: 0.85 },
+  notes: "Update 52 balances progression, rewards, raids, marketplace and premium actions for beta testing."
+};
 
 const MAX_VIP_LEVEL = 10;
 
@@ -663,7 +679,7 @@ function normalizeGame(game) {
   next.securityLogs = Array.isArray(next.securityLogs) ? next.securityLogs.slice(0, 80) : [];
   next.security = { lastRepairAt: null, repairCount: 0, ...(next.security || {}) };
   next.security.repairCount = Math.max(0, Math.floor(Number(next.security.repairCount) || 0));
-  next.balance = { configVersion: 1, ...(next.balance || {}) };
+  next.balance = getBalance(next);
 
   const savedBuildings = next.buildings && typeof next.buildings === "object" ? next.buildings : {};
   const citadelLevel = Math.max(1, Math.min(MAX_CITADEL_LEVEL, Math.floor(Number(savedBuildings.citadel?.level) || 1)));
@@ -1006,6 +1022,82 @@ function createPublicProfile(game) {
   };
 }
 
+
+function deepMergeBalance(defaults, custom) {
+  const result = Array.isArray(defaults) ? [...defaults] : { ...defaults };
+  if (!custom || typeof custom !== "object") return result;
+  Object.entries(custom).forEach(([key, value]) => {
+    if (value && typeof value === "object" && !Array.isArray(value) && defaults[key] && typeof defaults[key] === "object") {
+      result[key] = deepMergeBalance(defaults[key], value);
+    } else if (value !== undefined && value !== null && value !== "") {
+      result[key] = value;
+    }
+  });
+  return result;
+}
+
+function getBalance(game) {
+  return deepMergeBalance(DEFAULT_BALANCE_V52, game?.balance || {});
+}
+
+function getBalancedEnergyCost(game, type, fallback = 1) {
+  const value = Number(getBalance(game).energyCosts?.[type]);
+  return Math.max(1, Math.floor(Number.isFinite(value) ? value : fallback));
+}
+
+function getRewardBalance(game) {
+  const rewards = getBalance(game).rewards || {};
+  return {
+    gold: Math.max(0, Number(rewards.goldMultiplier || 1)),
+    wood: Math.max(0, Number(rewards.woodMultiplier || 1)),
+    crystals: Math.max(0, Number(rewards.crystalMultiplier || 1)),
+    diamonds: Math.max(0, Number(rewards.diamondMultiplier || 1))
+  };
+}
+
+function balanceReward(game, reward) {
+  const r = reward || {};
+  const m = getRewardBalance(game);
+  return {
+    ...r,
+    gold: Math.round((r.gold || 0) * m.gold),
+    wood: Math.round((r.wood || 0) * m.wood),
+    crystals: Math.round((r.crystals || 0) * m.crystals),
+    diamonds: Math.round((r.diamonds || 0) * m.diamonds),
+    sCoins: r.sCoins || 0,
+    xp: r.xp || 0
+  };
+}
+
+function getBuildingBalanceMultiplier(game, key, nextLevel) {
+  const config = getBalance(game).buildingCost || {};
+  if (nextLevel >= 25 && key === "citadel") return Number(config.citadelLateMultiplier || 2.15);
+  if (nextLevel >= 25) return Number(config.lateMultiplier || 1.72);
+  if (nextLevel >= 10) return Number(config.midMultiplier || 1.28);
+  return Number(config.earlyMultiplier || 1);
+}
+
+function getMarketplaceRules(game) {
+  const market = getBalance(game).marketplace || {};
+  return {
+    minPrice: Math.max(1, Math.floor(Number(market.minPrice || 25))),
+    maxPrice: Math.max(1, Math.floor(Number(market.maxPrice || 250000))),
+    taxPercent: Math.max(0, Math.min(35, Number(market.taxPercent || 5))),
+    maxListings: Math.max(1, Math.floor(Number(market.maxListings || 20)))
+  };
+}
+
+function normalizeBalancedSave(game) {
+  const next = normalizeGame(game);
+  next.balance = getBalance(next);
+  next.marketRules = { ...next.marketRules, ...getMarketplaceRules(next) };
+  next.resources.energy = Math.min(next.resources.energy, getMaxEnergy(next));
+  next.securityLogs.unshift({ at: new Date().toISOString(), type: "balance_pass_52", details: "Applied Update 52 beta balance defaults and normalized economy limits." });
+  next.securityLogs = next.securityLogs.slice(0, 80);
+  addMail(next, "Update 52 balance applied", "The beta balance pass was applied to your save. Energy, marketplace rules and economy limits were normalized.", "security");
+  return next;
+}
+
 function getMaxEnergy(game) {
   return 9 + getProgressionLevel(game);
 }
@@ -1167,7 +1259,7 @@ function applyReward(game, reward) {
   next.resources.crystals += reward.crystals || 0;
   next.resources.diamonds += reward.diamonds || 0;
   next.resources.sCoins += reward.sCoins || 0;
-  next.xp += Math.round((reward.xp || 0) * (1 + (getVipBonus(next).xp || 0) / 100));
+  next.xp += Math.round((reward.xp || 0) * Number(getBalance(next).xp?.multiplier || 1) * (1 + (getVipBonus(next).xp || 0) / 100));
 
   while (next.xp >= next.xpToNext) {
     if (next.level < MAX_HERO_LEVEL) {
@@ -1206,11 +1298,13 @@ function addPaladinXp(game, amount) {
 
 function getBuildingCost(game, key) {
   const level = game.buildings[key].level;
+  const nextLevel = level + 1;
   const base = BUILDINGS[key].baseCost;
+  const balance = getBuildingBalanceMultiplier(game, key, nextLevel);
   return {
-    gold: Math.round(base.gold * level * 1.35),
-    wood: Math.round(base.wood * level * 1.25),
-    crystals: Math.round(base.crystals * level * 1.2)
+    gold: Math.round(base.gold * level * 1.35 * balance),
+    wood: Math.round(base.wood * level * 1.25 * balance),
+    crystals: Math.round(base.crystals * level * 1.2 * balance)
   };
 }
 
@@ -1297,6 +1391,10 @@ function randomEnemy(level) {
 
 function getZone(zoneId) {
   return WORLD_ZONES.find((zone) => zone.id === zoneId) || WORLD_ZONES[0];
+}
+
+function defeatedEnergyTypeForZone(zone, isBoss = false) {
+  return isBoss ? "boss" : "dungeon";
 }
 
 function isZoneUnlocked(game, zone) {
@@ -1484,7 +1582,7 @@ function TopBar({ game, session, onLogout, saveStatus }) {
   return (
     <header className="topbar">
       <div>
-        <div className="badge">Update 51 · Beta Stability</div>
+        <div className="badge">Update 52 · Real Game Balance Pass</div>
         <h1>S-Fleet Fantasy War ⚔️</h1>
         <p>{getTitleData(game).emoji} {game.playerName} · {getProgressionLabel(game)} · {game.className} · {getTitleData(game).label}</p>
       </div>
@@ -1806,10 +1904,12 @@ function Battle({ game, setGame }) {
       let next = normalizeGame(prev);
       next.stats.wins += 1;
       next.daily.progress.combatWins += 1;
-      next.resources.energy = Math.max(0, next.resources.energy - 1);
-      next = applyReward(next, defeatedEnemy.reward);
+      const energyCost = getBalancedEnergyCost(next, "normalBattle", 1);
+      next.resources.energy = Math.max(0, next.resources.energy - energyCost);
+      const balancedReward = balanceReward(next, defeatedEnemy.reward);
+      next = applyReward(next, balancedReward);
 
-      if (Math.random() < 0.65) {
+      if (Math.random() < Number(getBalance(next).drops?.baseBattleChance || 0.58)) {
         dropped = createItem(getProgressionLevel(next), defeatedEnemy.name);
         if (next.inventory.length < 60) {
           next.inventory.push(dropped);
@@ -1832,9 +1932,9 @@ function Battle({ game, setGame }) {
 
   function finishLoss() {
     setGame((prev) => {
-      const next = clone(prev);
+      const next = normalizeGame(prev);
       next.stats.losses += 1;
-      next.resources.energy = Math.max(0, next.resources.energy - 1);
+      next.resources.energy = Math.max(0, next.resources.energy - getBalancedEnergyCost(next, "normalBattle", 1));
       return next;
     });
     addLog("You were defeated. The hero returns to the citadel.");
@@ -1862,8 +1962,8 @@ function Battle({ game, setGame }) {
 
   function attack(type, skillSlot = 1) {
     if (busy) return;
-    if (game.resources.energy <= 0) {
-      addLog("You have no energy left. Collect resources.");
+    if (game.resources.energy < getBalancedEnergyCost(game, "normalBattle", 1)) {
+      addLog(`You need ${getBalancedEnergyCost(game, "normalBattle", 1)} energy. Collect resources.`);
       setAutoBattle(false);
       return;
     }
@@ -2014,8 +2114,9 @@ function Dungeon({ game, setGame }) {
       addLog(`Zone unlocks at level ${zone.level}.`);
       return;
     }
-    if (game.resources.energy < zone.energyCost) {
-      addLog(`You need ${zone.energyCost} energy for ${zone.name}.`);
+    const zoneCost = getBalancedEnergyCost(game, defeatedEnergyTypeForZone(zone, isBoss), zone.energyCost);
+    if (game.resources.energy < zoneCost) {
+      addLog(`You need ${zoneCost} energy for ${zone.name}.`);
       return;
     }
     setEnemy(createWorldEnemy(zone, getProgressionLevel(game), isBoss));
@@ -2035,7 +2136,7 @@ function Dungeon({ game, setGame }) {
       next.stats.dungeonWins += 1;
       next.daily.progress.combatWins += 1;
       next.daily.progress.dungeonWins += 1;
-      next.resources.energy = Math.max(0, next.resources.energy - defeatedEnemy.energyCost);
+      next.resources.energy = Math.max(0, next.resources.energy - getBalancedEnergyCost(next, defeatedEnemy.isBoss ? "boss" : "dungeon", defeatedEnemy.energyCost));
       next.world.clears[zone.id] = (next.world.clears[zone.id] || 0) + 1;
 
       if (defeatedEnemy.isBoss && !next.world.completedBosses.includes(zone.id)) {
@@ -2046,9 +2147,11 @@ function Dungeon({ game, setGame }) {
         next.stats.bossKills += 1;
       }
 
-      next = applyReward(next, defeatedEnemy.reward);
+      const balancedReward = balanceReward(next, defeatedEnemy.reward);
+      next = applyReward(next, balancedReward);
 
-      if (Math.random() < defeatedEnemy.dropChance) {
+      const dropChance = Math.min(0.98, defeatedEnemy.dropChance * Number(getBalance(next).drops?.dungeonMultiplier || 0.9));
+      if (Math.random() < dropChance) {
         dropped = createItem(Math.max(getProgressionLevel(next), zone.level), defeatedEnemy.name, defeatedEnemy.rarityBoost);
         if (next.inventory.length < 60) {
           next.inventory.push(dropped);
@@ -2079,7 +2182,7 @@ function Dungeon({ game, setGame }) {
     setGame((prev) => {
       const next = normalizeGame(prev);
       next.stats.losses += 1;
-      next.resources.energy = Math.max(0, next.resources.energy - enemy.energyCost);
+      next.resources.energy = Math.max(0, next.resources.energy - getBalancedEnergyCost(next, enemy.isBoss ? "boss" : "dungeon", enemy.energyCost));
       return next;
     });
     addLog("You were defeated in the dungeon. Energy was consumed.");
@@ -2106,8 +2209,9 @@ function Dungeon({ game, setGame }) {
       addLog(`Zone unlocks at level ${zone.level}.`);
       return;
     }
-    if (game.resources.energy < enemy.energyCost) {
-      addLog(`You need ${enemy.energyCost} energy for this battle.`);
+    const currentEnergyCost = getBalancedEnergyCost(game, enemy.isBoss ? "boss" : "dungeon", enemy.energyCost);
+    if (game.resources.energy < currentEnergyCost) {
+      addLog(`You need ${currentEnergyCost} energy for this battle.`);
       return;
     }
 
@@ -2155,7 +2259,7 @@ function Dungeon({ game, setGame }) {
             <h2>World Map / Dungeon</h2>
             <p>Choose a zone, fight specific monsters and defeat the boss for progress.</p>
           </div>
-          <div className="power-summary">⚡ Zone cost: {selectedZone.energyCost}</div>
+          <div className="power-summary">⚡ Zone cost: {getBalancedEnergyCost(game, "dungeon", selectedZone.energyCost)}</div>
         </div>
 
         <div className="zone-grid">
@@ -2173,7 +2277,7 @@ function Dungeon({ game, setGame }) {
                 <div>
                   <h3>{zone.name}</h3>
                   <p>{zone.description}</p>
-                  <small>Level {zone.level}+ · Energy {zone.energyCost} · Clears {clears}</small>
+                  <small>Level {zone.level}+ · Energy {getBalancedEnergyCost(game, "dungeon", zone.energyCost)} · Clears {clears}</small>
                   <b>{completed ? "Boss defeated ✅" : unlocked ? "Unlocked" : `Locked until level ${zone.level}`}</b>
                 </div>
               </button>
@@ -2186,7 +2290,7 @@ function Dungeon({ game, setGame }) {
         <div className="section-title">
           <div>
             <h2>{selectedZone.emoji} {selectedZone.name}</h2>
-            <p>Drop chance {Math.round(selectedZone.dropChance * 100)}% · Rarity boost +{selectedZone.rarityBoost}</p>
+            <p>Drop chance {Math.round(selectedZone.dropChance * Number(getBalance(game).drops?.dungeonMultiplier || 0.9) * 100)}% · Rarity boost +{selectedZone.rarityBoost}</p>
           </div>
           <div className="dungeon-actions">
             <button onClick={() => startFight(false)}>Monster</button>
@@ -3564,8 +3668,9 @@ function WorldBossPanel({ game, setGame, session }) {
 
   async function attackBoss() {
     if (!boss || !supabase || !session) return;
-    if (game.resources.energy < 2) {
-      setLog("You need 2 energy for World Boss.");
+    const worldBossEnergyCost = getBalancedEnergyCost(game, "worldBoss", 3);
+    if (game.resources.energy < worldBossEnergyCost) {
+      setLog(`You need ${worldBossEnergyCost} energy for World Boss.`);
       return;
     }
     const stats = getHeroStats(game);
@@ -3578,7 +3683,7 @@ function WorldBossPanel({ game, setGame, session }) {
     }
     setGame((prev) => {
       const next = normalizeGame(prev);
-      next.resources.energy = Math.max(0, next.resources.energy - 2);
+      next.resources.energy = Math.max(0, next.resources.energy - getBalancedEnergyCost(next, "worldBoss", 3));
       next.stats.worldBossDamage += damage;
       next.worldBoss.totalDamage += damage;
       next.worldBoss.attacksToday += 1;
@@ -3601,7 +3706,7 @@ function WorldBossPanel({ game, setGame, session }) {
         <h2>{WORLD_BOSS_CONFIG.name}</h2>
         <p>{WORLD_BOSS_CONFIG.rewardPreview}</p>
         <div className="progress-wrap"><div className="progress-label"><span>Boss HP</span><span>{hp}/{maxHp}</span></div><div className="progress"><div style={{ width: `${pct}%` }} /></div></div>
-        <button className="primary big" disabled={!boss || game.resources.energy < 2} onClick={attackBoss}>Attack World Boss · 2 energy</button>
+        <button className="primary big" disabled={!boss || game.resources.energy < 2} onClick={attackBoss}>Attack World Boss · balanced energy</button>
         <button onClick={loadBoss}>Refresh</button>
         <div className="notice">{log}</div>
       </div>
@@ -4959,7 +5064,7 @@ function Update41To50Panel({ game, setGame, session, isAdmin }) {
       </div>
 
       <div className="panel update-card-highlight">
-        <div className="badge">Update 51 · Beta Stability</div>
+        <div className="badge">Update 52 · Real Game Balance Pass</div>
         <h2>Beta Launch Checklist</h2>
         <p>This is the main release badge that now appears in the top bar.</p>
         <ul className="checklist">
@@ -4982,14 +5087,15 @@ const CHANGELOG_51 = [
   { update: "Update 31", title: "Security + Balance + Admin Logs", text: "Added local save audit, server grants, balance config and anti-cheat repair tools." },
   { update: "Update 40", title: "Visuals + Chat + PWA", text: "Added visual polish, chat, alerts, S-Coin requests, sound toggles and optimization tools." },
   { update: "Update 50", title: "Beta Launch Pack", text: "Added player profile prep, cooldowns, guild permissions prep, cosmetics, events and beta launch summary." },
-  { update: "Update 51", title: "Beta Stability + Bug Tracker", text: "Added Report Bug, Admin Bug Tracker, changelog, recovery helpers and debug export tools." }
+  { update: "Update 51", title: "Beta Stability + Bug Tracker", text: "Added Report Bug, Admin Bug Tracker, changelog, recovery helpers and debug export tools." },
+  { update: "Update 52", title: "Real Game Balance Pass", text: "Balanced XP, energy costs, building costs, rewards, drops, marketplace limits, raid settings and admin config tools." }
 ];
 
 function buildDebugPayload(game, extra = {}) {
   const safeGame = normalizeGame(game);
   const audit = runSecurityAudit(safeGame);
   return {
-    update: "Update 51 · Beta Stability",
+    update: "Update 52 · Real Game Balance Pass",
     generatedAt: new Date().toISOString(),
     player: {
       name: safeGame.playerName,
@@ -5048,7 +5154,7 @@ function ChangelogPanel({ game, setGame }) {
   return (
     <section className="grid two">
       <div className="panel">
-        <div className="badge">Update 51 · Beta Stability</div>
+        <div className="badge">Update 52 · Real Game Balance Pass</div>
         <h2>Game Changelog</h2>
         <p>Important milestones are listed here so players can always see what update is live.</p>
         <div className="changelog-list">
@@ -5064,7 +5170,7 @@ function ChangelogPanel({ game, setGame }) {
       <div className="panel">
         <h2>Current Build</h2>
         <div className="level-rules">
-          <div><b>Live version</b><span>Update 51 · Beta Stability</span></div>
+          <div><b>Live version</b><span>Update 52 · Real Game Balance Pass</span></div>
           <div><b>Bug tracking</b><span>Enabled</span></div>
           <div><b>Recovery</b><span>Error boundary + save repair</span></div>
           <div><b>Debug export</b><span>Available from Report Bug / Security</span></div>
@@ -5101,7 +5207,7 @@ function ReportBugPanel({ game, setGame, session }) {
     if (hasSupabase && session) {
       const { error } = await supabase.from("bug_reports").insert(payload);
       if (error) {
-        setStatus(`Bug report failed: ${error.message}. Run the Update 51 SQL.`);
+        setStatus(`Bug report failed: ${error.message}. Run the Update 52 SQL.`);
         return;
       }
     }
@@ -5127,7 +5233,7 @@ function ReportBugPanel({ game, setGame, session }) {
   return (
     <section className="grid two">
       <div className="panel">
-        <div className="badge">Update 51 · Report Bug</div>
+        <div className="badge">Update 52 · Report Bug</div>
         <h2>Report Bug</h2>
         <p>Send a bug report to the admin panel with safe debug information.</p>
         <label>Where did it happen?</label>
@@ -5178,7 +5284,7 @@ function AdminBugTrackerPanel({ session, isAdmin }) {
     if (filter !== "all") query = query.eq("status", filter);
     const { data, error } = await query;
     if (error) {
-      setStatus(`Load failed: ${error.message}. Run Update 51 SQL.`);
+      setStatus(`Load failed: ${error.message}. Run Update 52 SQL.`);
       return;
     }
     setBugs(data || []);
@@ -5199,7 +5305,7 @@ function AdminBugTrackerPanel({ session, isAdmin }) {
 
   return (
     <section className="panel">
-      <div className="section-title"><div><div className="badge">Update 51 · Admin</div><h2>Admin Bug Tracker</h2><p>Review player bug reports, change status and export debug payloads.</p></div><button onClick={loadBugs}>Refresh</button></div>
+      <div className="section-title"><div><div className="badge">Update 52 · Admin</div><h2>Admin Bug Tracker</h2><p>Review player bug reports, change status and export debug payloads.</p></div><button onClick={loadBugs}>Refresh</button></div>
       <label>Status filter</label>
       <select value={filter} onChange={(e) => setFilter(e.target.value)}>
         <option value="open">Open</option><option value="fixed">Fixed</option><option value="ignored">Ignored</option><option value="all">All</option>
@@ -5216,6 +5322,91 @@ function AdminBugTrackerPanel({ session, isAdmin }) {
           </article>
         ))}
       </div>
+    </section>
+  );
+}
+
+
+function BalancePassPanel({ game, setGame, session, isAdmin }) {
+  const [status, setStatus] = useState("Update 52 balance tools ready.");
+  const [serverConfig, setServerConfig] = useState("");
+  const balance = getBalance(game);
+  const rules = getMarketplaceRules(game);
+
+  async function loadServerBalance() {
+    if (!hasSupabase || !session || !isAdmin) {
+      setStatus("Server balance config requires admin Supabase access.");
+      return;
+    }
+    const { data, error } = await supabase.rpc("admin_get_balance_v52");
+    if (error) {
+      setStatus(`Balance load failed: ${error.message}. Run the Update 52 SQL.`);
+      return;
+    }
+    setServerConfig(JSON.stringify(data || DEFAULT_BALANCE_V52, null, 2));
+    setStatus("Server balance config loaded.");
+  }
+
+  async function saveServerBalance() {
+    if (!hasSupabase || !session || !isAdmin) return;
+    try {
+      const parsed = JSON.parse(serverConfig || "{}");
+      const { error } = await supabase.rpc("admin_set_balance_v52", { new_config: parsed });
+      setStatus(error ? `Balance save failed: ${error.message}` : "Server balance saved and logged.");
+    } catch (err) {
+      setStatus(`Invalid JSON: ${err.message}`);
+    }
+  }
+
+  function applyDefaults() {
+    setGame((prev) => normalizeBalancedSave(prev));
+    setStatus("Update 52 balance defaults applied to this save.");
+  }
+
+  function exportBalance() {
+    const blob = new Blob([JSON.stringify({ version: GAME_VERSION_LABEL, balance, marketplaceRules: rules }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "s-fleet-balance-v52.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <section className="grid two">
+      <div className="panel">
+        <div className="section-title"><div><div className="badge">Update 52 · Balance</div><h2>Real Game Balance Pass</h2><p>Beta balance for XP, energy, drops, buildings, marketplace, raids and premium economy.</p></div><button onClick={exportBalance}>Export balance</button></div>
+        <div className="level-rules">
+          <div><b>XP multiplier</b><span>{balance.xp.multiplier}</span></div>
+          <div><b>Normal battle</b><span>{balance.energyCosts.normalBattle} energy</span></div>
+          <div><b>Dungeon</b><span>{balance.energyCosts.dungeon} energy</span></div>
+          <div><b>Boss / World Boss</b><span>{balance.energyCosts.boss} / {balance.energyCosts.worldBoss} energy</span></div>
+          <div><b>City attack</b><span>{balance.energyCosts.cityAttack} energy</span></div>
+          <div><b>Marketplace tax</b><span>{rules.taxPercent}%</span></div>
+          <div><b>Market min / max</b><span>{rules.minPrice} / {rules.maxPrice}</span></div>
+          <div><b>Raid S-Coins</b><span>{balance.raid.sCoinsProtected ? "protected" : "not protected"}</span></div>
+        </div>
+        <button className="primary big" onClick={applyDefaults}>Apply Update 52 defaults to my save</button>
+        <div className="notice">{status}</div>
+      </div>
+      <div className="panel">
+        <h2>Balance summary</h2>
+        <div className="update-list">
+          <div><b>Leveling</b><p>Early game stays accessible, level 50–100 slows down, Paragon is intentionally long-term.</p></div>
+          <div><b>Economy</b><p>Monster rewards are reduced slightly to keep buildings, marketplace and raids meaningful.</p></div>
+          <div><b>Building costs</b><p>Levels 10+ and 25+ scale harder, with Citadel late levels becoming premium long-term goals.</p></div>
+          <div><b>PvP / Raids</b><p>City attacks cost more energy and the raid steal percentages are capped. S-Coins cannot be stolen.</p></div>
+          <div><b>Marketplace</b><p>Listings now have clear min/max/tax limits to reduce extreme prices.</p></div>
+        </div>
+      </div>
+      {isAdmin && (
+        <div className="panel wide-panel">
+          <div className="section-title"><div><h2>Admin balance config</h2><p>Edit server-side balance JSON. Changes are logged in Supabase.</p></div><button onClick={loadServerBalance}>Load server config</button></div>
+          <textarea className="admin-json" value={serverConfig} onChange={(e) => setServerConfig(e.target.value)} spellCheck="false" placeholder="Load server config or paste JSON here..." />
+          <button className="primary big" onClick={saveServerBalance}>Save server balance config</button>
+        </div>
+      )}
     </section>
   );
 }
@@ -5379,6 +5570,7 @@ function Game({ session }) {
         {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>🧰 Admin</button>}
         {isAdmin && <button className={tab === "adminPlus" ? "active" : ""} onClick={() => setTab("adminPlus")}>📊 Admin+</button>}
         <button className={tab === "security" ? "active" : ""} onClick={() => setTab("security")}>🔒 Security</button>
+        <button className={tab === "balance52" ? "active" : ""} onClick={() => setTab("balance52")}>⚖️ Balance</button>
         <button className={tab === "quests" ? "active" : ""} onClick={() => setTab("quests")}>📜 Quests</button>
         <button className="danger-tab" onClick={resetSave}>Reset progress</button>
       </nav>
@@ -5417,6 +5609,7 @@ function Game({ session }) {
       {tab === "admin" && isAdmin && <AdminPanel session={session} />}
       {tab === "adminPlus" && isAdmin && <AdminDashboardPlus session={session} />}
       {tab === "security" && <Update31SecurityPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
+      {tab === "balance52" && <BalancePassPanel game={game} setGame={setGame} session={session} isAdmin={isAdmin} />}
       {tab === "quests" && <Quests game={game} setGame={setGame} />}
     </main>
   );
@@ -5438,7 +5631,7 @@ class AppErrorBoundary extends React.Component {
         <main className="shell center">
           <section className="panel recovery-panel">
             <h1>S-Fleet Fantasy War ⚔️</h1>
-            <h2>Update 51 Recovery Mode</h2>
+            <h2>Update 52 Recovery Mode</h2>
             <p>The game caught an error, but it will not leave a black screen. Reload the game, then open Report Bug or Security to export debug information.</p>
             <div className="notice">Technical detail: {this.state.message}</div>
             <div className="row-actions"><button className="primary" onClick={() => window.location.reload()}>Reload game</button><button onClick={() => navigator.clipboard?.writeText(this.state.message || "Unknown error")}>Copy technical detail</button></div>

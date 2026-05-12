@@ -1849,3 +1849,63 @@ end;
 $$;
 
 grant execute on function public.admin_bug_summary() to authenticated;
+
+-- Update 52 · Real Game Balance Pass
+-- Adds explicit server-side balance helpers for the Update 52 Balance panel.
+
+update public.game_balance_config
+set config = jsonb_build_object(
+  'configVersion', 52,
+  'xp', jsonb_build_object('multiplier', 0.85, 'levelCurve', 'soft-early / slower-paragon'),
+  'energyCosts', jsonb_build_object('normalBattle', 1, 'dungeon', 2, 'boss', 3, 'cityAttack', 5, 'worldBoss', 3),
+  'buildingCost', jsonb_build_object('earlyMultiplier', 1.0, 'midMultiplier', 1.28, 'lateMultiplier', 1.72, 'citadelLateMultiplier', 2.15),
+  'rewards', jsonb_build_object('goldMultiplier', 0.92, 'woodMultiplier', 0.95, 'crystalMultiplier', 0.90, 'diamondMultiplier', 0.80),
+  'drops', jsonb_build_object('baseBattleChance', 0.58, 'dungeonMultiplier', 0.90, 'bossBonus', 0.08, 'legendaryCapPercent', 4),
+  'marketplace', jsonb_build_object('minPrice', 25, 'maxPrice', 250000, 'taxPercent', 5, 'maxListings', 20),
+  'pvp', jsonb_build_object('sameTargetCooldownMinutes', 120, 'outgoingLimit', 5, 'sameGuildBlocked', true),
+  'raid', jsonb_build_object('baseStealPercent', 4, 'wallBreakBonusPercent', 3, 'citadelBreakBonusPercent', 5, 'mineBreakBonusPercent', 4, 'lumberBreakBonusPercent', 4, 'diamondStealCapPercent', 2, 'sCoinsProtected', true),
+  'shop', jsonb_build_object('energyPackSCoins', 2, 'classChangeSCoins', 10, 'renameSCoins', 2, 'premiumChestSCoins', 5),
+  'worldBoss', jsonb_build_object('energyCost', 3, 'dailySoftLimit', 25, 'rewardMultiplier', 0.85),
+  'notes', 'Update 52 beta balance pass default configuration'
+), updated_at = now()
+where id = 'current'
+and coalesce((config->>'configVersion')::int, 0) < 52;
+
+create or replace function public.admin_get_balance_v52()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_current_user_admin() then
+    raise exception 'Admin access required';
+  end if;
+  return (select config from public.game_balance_config where id = 'current');
+end;
+$$;
+
+grant execute on function public.admin_get_balance_v52() to authenticated;
+
+create or replace function public.admin_set_balance_v52(new_config jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_current_user_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  update public.game_balance_config
+  set config = coalesce(new_config, '{}'::jsonb), updated_by = auth.uid(), updated_at = now()
+  where id = 'current';
+
+  perform public.log_admin_action(null, 'update_52_balance_config', jsonb_build_object('configVersion', coalesce(new_config->>'configVersion', 'unknown'), 'config', new_config));
+
+  return (select config from public.game_balance_config where id = 'current');
+end;
+$$;
+
+grant execute on function public.admin_set_balance_v52(jsonb) to authenticated;
